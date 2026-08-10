@@ -131,16 +131,21 @@ the corresponding OpenAPI schema at `/openapi.json`.
 | Aircraft | `POST /aircraft`, `GET /aircraft/{id}` |
 | Trip requests | `POST /trip-requests`, `GET /trip-requests/{id}`, `POST /trip-requests/{id}/submit`, `POST /trip-requests/{id}/cancel` |
 
+Create the Customer and any Passenger records first, then use their response
+IDs in the request. The airport IDs below are the deterministic Dublin (EIDW)
+and Farnborough (EGLF) development/demo seed values. Developers can always
+retrieve the current seeded resources with `GET /api/v1/airports`.
+
 Example draft request:
 
 ```json
 {
-  "customer_id": "96e078ec-80b6-4f2c-bfc4-4a8610080c56",
-  "passenger_ids": ["dd3c9dc0-26b9-4079-a89f-f2b4aaf823bf"],
+  "customer_id": "<customer-id-returned-by-POST-/api/v1/customers>",
+  "passenger_ids": ["<passenger-id-returned-by-POST-/api/v1/passengers>"],
   "legs": [
     {
-      "origin_airport_id": "a9b7f0a7-2a82-5ca2-a0d0-c37f1546ea8f",
-      "destination_airport_id": "96c19d1f-4421-5f09-99a1-ff7ab2bfc729",
+      "origin_airport_id": "68f5388c-2fe1-5fa4-94b7-cbd46f0f52b4",
+      "destination_airport_id": "9a41e704-11f9-5d8c-ba0c-1c3e9dd49322",
       "departure_at": "2026-09-01T14:00:00+00:00",
       "passenger_count": 1
     }

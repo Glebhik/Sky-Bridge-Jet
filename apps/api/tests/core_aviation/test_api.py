@@ -11,6 +11,33 @@ from sky_bridge_jet.main import app
 from sky_bridge_jet.modules.core_aviation.seed import seed_airports
 
 
+def test_openapi_documents_safe_error_envelope_for_all_phase_two_validation_responses() -> None:
+    schema = app.openapi()
+    phase_two_paths = (
+        "/api/v1/customers",
+        "/api/v1/customers/{customer_id}",
+        "/api/v1/passengers",
+        "/api/v1/passengers/{passenger_id}",
+        "/api/v1/airports",
+        "/api/v1/airports/{airport_id}",
+        "/api/v1/operators",
+        "/api/v1/operators/{operator_id}",
+        "/api/v1/aircraft",
+        "/api/v1/aircraft/{aircraft_id}",
+        "/api/v1/trip-requests",
+        "/api/v1/trip-requests/{trip_request_id}",
+        "/api/v1/trip-requests/{trip_request_id}/submit",
+        "/api/v1/trip-requests/{trip_request_id}/cancel",
+    )
+
+    for path in phase_two_paths:
+        for operation in schema["paths"][path].values():
+            response_schema = operation["responses"]["422"]["content"]["application/json"]["schema"]
+            assert response_schema == {"$ref": "#/components/schemas/ErrorResponse"}
+
+    assert "HTTPValidationError" not in schema["components"]["schemas"]
+
+
 def test_customer_endpoint_normalizes_email_and_returns_safe_validation_errors() -> None:
     engine = create_engine(
         "sqlite://",
