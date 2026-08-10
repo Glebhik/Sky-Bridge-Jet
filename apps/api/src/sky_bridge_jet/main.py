@@ -14,6 +14,7 @@ from sky_bridge_jet.api.router import api_v1_router
 from sky_bridge_jet.core.config import get_settings
 from sky_bridge_jet.core.logging import configure_logging
 from sky_bridge_jet.db.session import get_db
+from sky_bridge_jet.modules.core_aviation.router import register_exception_handlers
 
 configure_logging(get_settings().log_level)
 logger = logging.getLogger(__name__)
@@ -50,6 +51,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
 app = FastAPI(title="Sky Bridge Jet API", version="0.1.0")
 app.add_middleware(RequestContextMiddleware)
+register_exception_handlers(app)
 app.include_router(api_v1_router)
 DatabaseSession = Annotated[Session, Depends(get_db)]
 

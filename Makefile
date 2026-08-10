@@ -1,9 +1,9 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup setup-e2e dev dev-api dev-web test test-api test-api-integration test-web test-e2e lint lint-api lint-web format format-api format-web format-write build migrate migrate-compose docker-config
+.PHONY: help setup setup-e2e dev dev-api dev-web test test-api test-api-integration test-web test-e2e lint lint-api lint-web format format-api format-web format-write build migrate migrate-compose seed-airports seed-airports-compose docker-config
 
 help:
-	@printf "Targets: setup setup-e2e dev dev-api dev-web test test-api test-api-integration test-web test-e2e lint format format-write build migrate migrate-compose docker-config\n"
+	@printf "Targets: setup setup-e2e dev dev-api dev-web test test-api test-api-integration test-web test-e2e lint format format-write build migrate migrate-compose seed-airports seed-airports-compose docker-config\n"
 
 setup:
 	corepack enable
@@ -67,6 +67,12 @@ migrate:
 
 migrate-compose:
 	docker compose exec api /app/.venv/bin/alembic upgrade head
+
+seed-airports:
+	cd apps/api && uv run python -m sky_bridge_jet.modules.core_aviation.seed
+
+seed-airports-compose:
+	docker compose exec api /app/.venv/bin/python -m sky_bridge_jet.modules.core_aviation.seed
 
 docker-config:
 	docker compose config
