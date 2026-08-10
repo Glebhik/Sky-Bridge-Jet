@@ -49,6 +49,12 @@ router = APIRouter(tags=["core-aviation"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
 
+def _route_operation(request: Request) -> str:
+    route = request.scope.get("route")
+    operation = getattr(route, "path", None)
+    return operation if isinstance(operation, str) else "unknown"
+
+
 def _error_response(
     request: Request,
     *,
@@ -154,8 +160,15 @@ def register_exception_handlers(app: object) -> None:
         )
 
     @app.exception_handler(SQLAlchemyError)
-    async def persistence_error(request: Request, _error: SQLAlchemyError) -> JSONResponse:
-        logger.exception("persistence_failure")
+    async def persistence_error(request: Request, error: SQLAlchemyError) -> JSONResponse:
+        logger.error(
+            "persistence_failure",
+            extra={
+                "correlation_id": getattr(request.state, "correlation_id", None),
+                "operation": _route_operation(request),
+                "error_type": type(error).__name__,
+            },
+        )
         return _error_response(
             request,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

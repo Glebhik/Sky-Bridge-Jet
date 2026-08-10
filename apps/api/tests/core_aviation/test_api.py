@@ -1,14 +1,18 @@
+import logging
 from collections.abc import Generator
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from sky_bridge_jet.core.logging import JsonFormatter
 from sky_bridge_jet.db.base import Base
 from sky_bridge_jet.db.session import get_db
 from sky_bridge_jet.main import app
 from sky_bridge_jet.modules.core_aviation.seed import seed_airports
+from sky_bridge_jet.modules.core_aviation.services import CustomerService
 
 
 def test_openapi_documents_safe_error_envelope_for_all_phase_two_validation_responses() -> None:
@@ -36,6 +40,53 @@ def test_openapi_documents_safe_error_envelope_for_all_phase_two_validation_resp
             assert response_schema == {"$ref": "#/components/schemas/ErrorResponse"}
 
     assert "HTTPValidationError" not in schema["components"]["schemas"]
+
+
+def test_persistence_failure_logs_safe_metadata_without_customer_pii(monkeypatch, caplog) -> None:
+    private_email = "phase2-private-customer@example.com"
+
+    def raise_persistence_error(*_args, **_kwargs):
+        raise OperationalError(
+            "INSERT INTO customers (primary_email) VALUES (:primary_email)",
+            {"primary_email": private_email},
+            RuntimeError("database unavailable"),
+        )
+
+    monkeypatch.setattr(CustomerService, "create", raise_persistence_error)
+    caplog.set_level(logging.ERROR, logger="sky_bridge_jet.modules.core_aviation.router")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/customers",
+            json={
+                "customer_type": "INDIVIDUAL",
+                "display_name": "Private Customer",
+                "primary_email": private_email,
+                "preferred_currency": "EUR",
+                "timezone": "Europe/Dublin",
+            },
+        )
+
+    persistence_record = next(
+        record for record in caplog.records if record.getMessage() == "persistence_failure"
+    )
+    rendered_log = JsonFormatter().format(persistence_record)
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": {
+            "code": "persistence_failure",
+            "message": "A persistence error prevented the request from completing",
+            "details": None,
+        }
+    }
+    assert persistence_record.error_type == "OperationalError"
+    assert persistence_record.operation == "/customers"
+    assert persistence_record.correlation_id == response.headers["x-request-id"]
+    assert private_email not in caplog.text
+    assert private_email not in rendered_log
+    assert "INSERT INTO customers" not in rendered_log
+    assert '"message": "persistence_failure"' in rendered_log
 
 
 def test_customer_endpoint_normalizes_email_and_returns_safe_validation_errors() -> None:
