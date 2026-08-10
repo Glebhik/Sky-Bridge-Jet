@@ -1,0 +1,19 @@
+{
+  "name": "sky-bridge-jet",
+  "private": true,
+  "packageManager": "pnpm@11.21.0",
+  "scripts": {
+    "build": "pnpm --dir apps/web build",
+    "dev:web": "pnpm --dir apps/web dev",
+    "format": "pnpm --dir apps/web format",
+    "format:write": "pnpm --dir apps/web format:write",
+    "lint": "pnpm --dir apps/web lint",
+    "setup:e2e": "playwright install chromium",
+    "test": "pnpm --dir apps/web test",
+    "test:e2e": "playwright test",
+    "typecheck": "pnpm --dir apps/web typecheck"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1"
+  }
+}

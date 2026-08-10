@@ -1,0 +1,10 @@
+.env
+.git
+.next
+.venv
+node_modules
+apps/api/.venv
+apps/web/.next
+apps/web/node_modules
+playwright-report
+test-results
