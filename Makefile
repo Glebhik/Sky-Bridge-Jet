@@ -1,14 +1,18 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup dev dev-api dev-web test test-api test-web test-e2e lint lint-api lint-web format format-api format-web format-write build migrate docker-config
+.PHONY: help setup setup-e2e dev dev-api dev-web test test-api test-api-integration test-web test-e2e lint lint-api lint-web format format-api format-web format-write build migrate migrate-compose docker-config
 
 help:
-	@printf "Targets: setup dev dev-api dev-web test test-api test-web test-e2e lint format format-write build migrate docker-config\n"
+	@printf "Targets: setup setup-e2e dev dev-api dev-web test test-api test-api-integration test-web test-e2e lint format format-write build migrate migrate-compose docker-config\n"
 
 setup:
 	corepack enable
 	pnpm install --frozen-lockfile
 	cd apps/api && uv sync --locked
+	$(MAKE) setup-e2e
+
+setup-e2e:
+	pnpm setup:e2e
 
 dev:
 	docker compose up --build
@@ -23,6 +27,9 @@ test: test-api test-web
 
 test-api:
 	cd apps/api && uv run pytest
+
+test-api-integration:
+	cd apps/api && RUN_DATABASE_INTEGRATION=1 uv run pytest
 
 test-web:
 	pnpm --dir apps/web test
@@ -57,6 +64,9 @@ build:
 
 migrate:
 	cd apps/api && uv run alembic upgrade head
+
+migrate-compose:
+	docker compose exec api /app/.venv/bin/alembic upgrade head
 
 docker-config:
 	docker compose config

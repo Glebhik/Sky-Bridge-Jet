@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
     environment:
       POSTGRES_DB: ${DATABASE_NAME:-sky_bridge_jet}
       POSTGRES_USER: ${DATABASE_USER:-sky_bridge_jet}
@@ -22,7 +22,7 @@ services:
   api:
     build:
       context: ./apps/api
-    command: uv run --locked uvicorn sky_bridge_jet.main:app --host 0.0.0.0 --port 8000 --reload
+    command: /app/.venv/bin/uvicorn sky_bridge_jet.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src
     environment:
       APP_ENVIRONMENT: development
       DATABASE_NAME: ${DATABASE_NAME:-sky_bridge_jet}
@@ -30,7 +30,6 @@ services:
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:-sky_bridge_jet_dev_only}
       DATABASE_HOST: db
       DATABASE_PORT: 5432
-      DATABASE_URL: postgresql+psycopg://${DATABASE_USER:-sky_bridge_jet}:${DATABASE_PASSWORD:-sky_bridge_jet_dev_only}@db:5432/${DATABASE_NAME:-sky_bridge_jet}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       db:
@@ -49,8 +48,7 @@ services:
       timeout: 5s
       retries: 10
     volumes:
-      - ./apps/api:/app
-      - api_venv:/app/.venv
+      - ./apps/api/src:/app/src
 
   web:
     build:
@@ -80,6 +78,5 @@ services:
       - web_node_modules:/app/apps/web/node_modules
 
 volumes:
-  api_venv:
   postgres_data:
   web_node_modules:

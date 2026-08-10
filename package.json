@@ -8,6 +8,7 @@
     "format": "pnpm --dir apps/web format",
     "format:write": "pnpm --dir apps/web format:write",
     "lint": "pnpm --dir apps/web lint",
+    "setup:e2e": "playwright install chromium",
     "test": "pnpm --dir apps/web test",
     "test:e2e": "playwright test",
     "typecheck": "pnpm --dir apps/web typecheck"

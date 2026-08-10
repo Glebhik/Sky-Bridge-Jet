@@ -14,4 +14,6 @@ dependencies.
 
 Install commands use `--frozen-lockfile` or `--locked` in CI and Docker builds.
 This keeps Phase 1 dependency resolution reproducible without creating unused
-shared packages.
+shared packages. Docker runtime and tool base images are pinned to resolved
+immutable digests; updates require deliberately refreshing and reviewing those
+digests.

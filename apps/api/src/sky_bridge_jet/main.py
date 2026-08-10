@@ -11,10 +11,11 @@ from sqlalchemy.orm import Session
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from sky_bridge_jet.api.router import api_v1_router
+from sky_bridge_jet.core.config import get_settings
 from sky_bridge_jet.core.logging import configure_logging
 from sky_bridge_jet.db.session import get_db
 
-configure_logging()
+configure_logging(get_settings().log_level)
 logger = logging.getLogger(__name__)
 
 

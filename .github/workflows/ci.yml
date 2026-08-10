@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
         env:
           POSTGRES_DB: sky_bridge_jet
           POSTGRES_USER: sky_bridge_jet
@@ -28,6 +28,7 @@ jobs:
         working-directory: apps/api
     env:
       APP_ENVIRONMENT: test
+      RUN_DATABASE_INTEGRATION: "1"
       DATABASE_NAME: sky_bridge_jet
       DATABASE_USER: sky_bridge_jet
       DATABASE_PASSWORD: sky_bridge_jet_ci_password
@@ -39,12 +40,39 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: apps/api/uv.lock
+          python-version: "3.14"
       - run: uv sync --locked
+      - run: pg_isready -h localhost -p 5432 -U sky_bridge_jet -d sky_bridge_jet
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy src
       - run: uv run pytest
       - run: uv run alembic upgrade head
+      - name: Validate Docker Compose configuration
+        working-directory: ${{ github.workspace }}
+        run: docker compose config --quiet
+      - name: Validate full Compose stack
+        working-directory: ${{ github.workspace }}
+        env:
+          DATABASE_PORT: 55432
+          API_PORT: 58000
+          WEB_PORT: 53000
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:58000
+        run: |
+          docker compose up -d --build --wait
+          docker compose exec -T api /app/.venv/bin/alembic upgrade head
+          curl --fail --retry 5 --retry-connrefused http://127.0.0.1:58000/health
+          curl --fail --retry 5 --retry-connrefused http://127.0.0.1:58000/ready
+          curl --fail --retry 5 --retry-connrefused http://127.0.0.1:53000/ | grep -F "Premium Private Aviation Marketplace"
+          ! docker compose logs api | grep -E "Downloading |Installed [0-9]+ packages|Resolved [0-9]+ packages"
+      - name: Show Compose logs on failure
+        if: failure()
+        working-directory: ${{ github.workspace }}
+        run: docker compose logs --no-color
+      - name: Tear down Compose stack
+        if: always()
+        working-directory: ${{ github.workspace }}
+        run: docker compose down --volumes --remove-orphans
 
   web:
     runs-on: ubuntu-latest

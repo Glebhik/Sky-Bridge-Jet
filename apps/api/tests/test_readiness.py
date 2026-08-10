@@ -1,5 +1,7 @@
+import os
 from collections.abc import Generator
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
@@ -45,3 +47,15 @@ def test_ready_returns_service_unavailable_when_database_cannot_be_reached(
 
     assert response.status_code == 503
     assert response.json() == {"detail": {"status": "unavailable"}}
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    os.getenv("RUN_DATABASE_INTEGRATION") != "1",
+    reason="set RUN_DATABASE_INTEGRATION=1 with PostgreSQL available",
+)
+def test_ready_uses_the_configured_postgresql_database(client: TestClient) -> None:
+    response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}

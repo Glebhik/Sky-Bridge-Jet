@@ -324,4 +324,6 @@ application and uv with a committed lockfile for the Python API. The API uses
 synchronous SQLAlchemy 2.x consistently across request-scoped sessions,
 readiness checks, and Alembic migrations; FastAPI executes synchronous routes in
 its thread pool. These reversible engineering decisions are recorded in
-ADR-008 and ADR-009.
+ADR-008 and ADR-009. Alembic discovers future ORM mappings by importing
+`models.py` from each bounded-context module before inspecting SQLAlchemy
+metadata, as recorded in ADR-010.

@@ -55,8 +55,8 @@ cross-boundary contract exists.
 
 ## Local setup
 
-1. Copy the development examples: `cp .env.example .env`.
-2. Install dependencies: `make setup`.
+1. Copy the development examples into the repository root: `cp .env.example .env`.
+2. Install dependencies and Playwright Chromium: `make setup`.
 3. Start PostgreSQL: `docker compose up -d db`.
 4. Apply migrations: `make migrate`.
 5. Run the API: `make dev-api`.
@@ -68,16 +68,23 @@ API base URL; it defaults to `http://localhost:8000`.
 
 Alternatively, run the dev-focused container stack with `make dev`. The Compose
 API connects to the `db` service and the web service is available on port 3000.
+After the stack is healthy, apply migrations inside the API image with
+`make migrate-compose`.
 
-The values in `.env.example` are development examples only. Do not commit a
-real `.env` or any credentials.
+The values in `.env.example` are development examples only. The API, Alembic,
+and host-based Make targets read this repository-root `.env`. Docker Compose
+also reads it for variable interpolation, then sets `DATABASE_HOST=db` inside
+the API container. Do not commit a real `.env` or any credentials.
 
 ## Database and migrations
 
-`DATABASE_URL` may be supplied directly. Otherwise the API builds it from
+`DATABASE_URL` may be supplied directly and takes precedence when non-empty.
+Otherwise the API builds it safely from
 `DATABASE_NAME`, `DATABASE_USER`, `DATABASE_PASSWORD`, `DATABASE_HOST`, and
-`DATABASE_PORT`. Production configuration rejects the checked-in development
-password and a localhost database host.
+`DATABASE_PORT`. Keep `DATABASE_HOST=localhost` for host commands; Compose
+uses `db` internally. Production configuration requires either an explicit
+database URL or non-default component values, and rejects the checked-in
+development password and localhost host.
 
 Run existing migrations with:
 
@@ -94,20 +101,30 @@ uv run alembic revision --autogenerate -m "describe the schema change"
 uv run alembic upgrade head
 ```
 
-Alembic discovers models through `sky_bridge_jet.db.base.Base.metadata`. The
-baseline migration intentionally contains no business schema.
+Alembic imports every `models.py` under
+`sky_bridge_jet.modules.<bounded_context>` before inspecting
+`sky_bridge_jet.db.base.Base.metadata`. Future bounded contexts must keep ORM
+mappings in that convention; no domain module exists in Phase 1. The baseline
+migration intentionally contains no business schema.
 
 ## Quality commands
 
 ```sh
 make test          # API pytest and web Vitest suites
-make test-e2e      # Playwright browser smoke test
+make test-e2e      # Playwright Chromium smoke test (installed by make setup)
 make lint          # Ruff, mypy, ESLint, TypeScript
 make format        # Ruff and Prettier format checks
 make format-write  # Apply Ruff and Prettier formatting
 make build         # Next.js production build
 make docker-config # Validate Docker Compose configuration
 ```
+
+Run `make setup-e2e` to install Chromium separately when dependencies are
+already installed. Run `make test-api-integration` with PostgreSQL available to
+include the real readiness integration test.
+
+Container runtime and tool base images are pinned to resolved immutable digests,
+while application dependencies are pinned in committed pnpm and uv lockfiles.
 
 Platform endpoints:
 
