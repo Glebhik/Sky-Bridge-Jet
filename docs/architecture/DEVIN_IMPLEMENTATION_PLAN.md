@@ -2,10 +2,12 @@
 
 ## Purpose and scope
 
-Sky Bridge Jet is a premium, discreet private aviation marketplace, initially
-for Europe. It connects customers, their delegates, and concierge companies
-with private jet operators and brokers. It is not a retail airline search
-engine or generic travel site.
+Sky Bridge Jet is a premium, discreet managed private-aviation marketplace and
+charter intermediary, initially focused on Europe. It connects customers, their
+delegates, and concierge companies with private jet operators and brokers. Sky
+Bridge Jet does not own or operate aircraft in V1; licensed operators remain
+responsible for flight operation and execution. It is not a retail airline
+search engine or generic travel site.
 
 This document records the Phase 0 audit and a recommendation for V1. It is an
 implementation guide, not evidence of legal, regulatory, or security
@@ -42,9 +44,12 @@ provider adapters to be extracted later if justified by operational needs.
 
 The core API owns domain rules, state transitions, authorization decisions, and
 an immutable business audit trail. It exposes a versioned HTTP API to the web
-application. Background work handles notifications, provider polling, document
-processing, and other retryable integration jobs; it must not bypass domain
-state-transition rules.
+application. It orchestrates requests, operator offers, selections, operator
+confirmation, payment status, notifications, concierge requirements, and Empty
+Leg opportunities; it does not assume responsibility for aircraft operation.
+Background work handles notifications, provider polling, document processing,
+and other retryable integration jobs; it must not bypass domain state-transition
+rules.
 
 Core business modules must depend only on ports they own. Concrete operator,
 airport, payment, identity, mapping, notification, and AI implementations
@@ -124,24 +129,28 @@ needed in Phase 1.
 | Identity and Access | Authentication, roles (`CUSTOMER`, `OPERATOR`, `ADMIN`, `CONCIERGE`), organization/delegated access, sessions, and authorization policy. |
 | Customer | Customer profiles, preferences, privacy choices, and relationship to delegates or concierge organizations. |
 | Passenger | Passenger identity and travel details, with minimized and protected PII. |
-| Airport | Airport, FBO, operational metadata, and airport-search normalization. |
+| Airport | Globally extensible airport, FBO, country, time-zone, and operational metadata; V1 commercial focus is Europe but data models must not encode Europe-only assumptions. |
 | Operator | Operator/broker organizations, onboarding state, operating capabilities, and operator users. |
 | Aircraft | Aircraft records, categories, capability metadata, and operator association. |
 | Trip Request | A customer request and one or more legs, passengers, pets, baggage, catering, transfers, and lifecycle from draft through cancelled/expired. |
 | Quote | Operator offers, validity, release/withdrawal, selection, and immutable commercial snapshots. |
 | Pricing | Currency-safe calculations, fees, tax inputs, price breakdowns, and approval of commercial amounts. |
-| Booking | Booking lifecycle, confirmations, passengers, terms acceptance, and completion/cancellation/refund coordination. |
-| Empty Legs | First-class repositioning opportunities, availability constraints, publication state, and conversion to a trip/booking flow. |
-| Payment | Payment intent/status reconciliation and provider references; payment card data must remain with a compliant payment provider. |
+| Booking | Request-to-book and future instant-book-capable lifecycle, operator confirmation, passengers, terms acceptance, and completion/cancellation/refund coordination. |
+| Empty Legs | Independent inventory: operator, aircraft, origin, destination, departure window, seats, price/currency, flexibility, availability, provenance, and publication state. |
+| Payment | Payment intent/status reconciliation and provider references; raw card data is never stored and a booking is never marked paid without confirmed provider state. |
 | Notification | Templated, consent-aware, reliable messages and delivery records. |
-| Concierge and AI | Structured draft extraction, unresolved questions, human/customer confirmation, and concierge workflow. |
+| Concierge and AI | Structured draft extraction, unresolved questions, human/customer confirmation, and scope-controlled concierge requirements/workflow. |
 | Audit | Append-only actor/action/time/context records for sensitive business and administrative events. |
 
 The Trip Request, Quote, and Booking state machines are separate. Enforce their
-allowed transitions in domain services, not UI code. Quote selection must
-create a durable commercial snapshot before a booking is confirmed. Empty legs
-may feed a trip request or booking flow but retain their own origin and
-availability lifecycle.
+allowed transitions in domain services, not UI code. The canonical V1 path is
+Customer Request -> Quotes/Offers -> Customer Selects Offer -> Operator
+Confirmation -> Payment/Payment Authorization -> Confirmed Booking. Quote
+selection must create a durable commercial snapshot before confirmation. Model
+inventory capability explicitly: V1 is request-to-book; future
+instant-book-capable inventory requires reliable real-time availability,
+pricing, and confirmation from an approved provider. Empty Legs may feed a
+request or booking flow but retain their own origin and availability lifecycle.
 
 ## Provider-adapter architecture
 
@@ -155,15 +164,19 @@ personal data, and vendor SDK types must not leak into core domain objects.
 | `AirportDataProvider` | Airport/FBO lookup, normalization, and data refresh |
 | `AircraftAvailabilityProvider` | Available aircraft and operational constraints |
 | `OperatorQuoteProvider` | Quote request dispatch, quote ingestion, and status updates |
-| `PaymentProvider` | Hosted/tokenized payment initiation, webhooks, and reconciliation |
+| `PaymentProvider` | Mock provider initially; future hosted/tokenized payment initiation, webhooks, reconciliation, and confirmed state only |
 | `IdentityVerificationProvider` | Identity/KYC checks only where the approved product flow requires them |
 | `NotificationProvider` | Email/SMS/other delivery behind consent and template controls |
-| `TripIntentParser` | Natural-language extraction to a validated Trip Request draft and unresolved questions |
+| `TripIntentParser` | Vendor-neutral natural-language extraction to a validated Trip Request draft and unresolved questions; no autonomous commercial action |
 | `MapProvider` | Geocoding, distance, and transfer-related mapping data |
+| Concierge service providers | Ground transport, catering, FBO, and other trip services behind scoped request/fulfilment boundaries |
 
 Phase 1 should supply no live commercial adapters. Define ports, fake adapters,
-and contract tests only when a module needs them. Webhook endpoints must verify
-signatures, deduplicate events, and treat incoming data as untrusted.
+including `MockPaymentProvider`, and contract tests only when a module needs
+them. Seeded or manually entered Empty Leg inventory and mock provider data are
+permitted when implementation begins; real feeds remain future integrations.
+Webhook endpoints must verify signatures, deduplicate events, and treat
+incoming data as untrusted.
 
 ## Security, privacy, and auditability
 
@@ -199,7 +212,7 @@ signatures, deduplicate events, and treat incoming data as untrusted.
 
 | Risk | Mitigation |
 | --- | --- |
-| Operator data/API inconsistency or absence | Normalize behind ports, keep provenance, support manual operator workflows, and avoid assuming real-time availability. |
+| Operator data/API inconsistency or absence | Normalize behind ports, keep provenance, support manual operator workflows, and reserve Instant Book for approved reliable providers. |
 | Complex concurrent quote/booking changes | Explicit state machines, quote expiry, idempotency keys, transactional locks where needed, and audit events. |
 | Sensitive PII and travel-intelligence exposure | Data minimization, access controls, redaction, retention rules, and security review before production. |
 | Payment/webhook duplication or loss | Idempotent webhook processing, reconciliation, and durable provider event records. |
@@ -211,8 +224,8 @@ signatures, deduplicate events, and treat incoming data as untrusted.
 | Risk | Mitigation |
 | --- | --- |
 | Supply liquidity is insufficient for customer expectations | Validate operator acquisition and service-level model before promising instant booking. |
-| Ambiguous marketplace role and commercial model | Owner decision on broker/marketplace position, fees, and contractual responsibilities. |
-| Customers expect airline-like instant confirmation | Clearly communicate request, quote, validity, and confirmation stages. |
+| Marketplace legal characterization | Operate to the approved managed-marketplace direction while obtaining specialist aviation and commercial legal review before production claims or launch. |
+| Customers expect airline-like instant confirmation | Clearly distinguish request-to-book from approved instant-book-capable inventory and show operator confirmation state. |
 | Empty legs have volatile availability | Present availability and restrictions transparently; do not market them as guaranteed inventory. |
 | Premium trust is undermined by a poor concierge experience | Test tone, delegation, exception handling, and human escalation with target users. |
 
@@ -222,33 +235,32 @@ signatures, deduplicate events, and treat incoming data as untrusted.
 | --- | --- | --- |
 | 1. Engineering foundation | Create the approved repository structure, local environment, CI, baseline security controls, architecture decision records, and test harnesses. | Web and API build locally; PostgreSQL migrations run on a clean database; CI runs formatting, type/quality checks, unit tests, and builds; no live provider credentials or integrations. |
 | 2. Core private aviation domain | Implement identity/access baseline, customer, passenger, airport, operator, aircraft, and Trip Request drafts/lifecycle. | Authorized users can create, validate, view, and cancel appropriate trip-request states; UUID, money, timezone, authorization, and audit conventions are tested. |
-| 3. Quote, pricing, and booking lifecycle | Implement quote intake/selection, commercial snapshots, pricing, booking state machine, and payment-provider boundary. | Valid transitions, expiry, idempotency, audit records, and non-floating financial values are covered by tests; no booking becomes confirmed without required authorization. |
-| 4. Customer experience | Deliver accessible responsive request, clarification, quote comparison, selection, booking-status, and passenger-management flows. | Critical customer journey passes Playwright coverage and is usable on supported mobile and desktop breakpoints. |
+| 3. Quote, pricing, and booking lifecycle | Implement quote intake/selection, commercial snapshots, pricing, request-to-book booking state machine, `PaymentProvider`, and `MockPaymentProvider`. | Valid transitions include operator confirmation before confirmed booking; expiry, idempotency, audit records, non-floating financial values, and confirmed-provider payment state are covered by tests. |
+| 4. Customer experience | Deliver accessible responsive Europe-first request, clarification, quote comparison, selection, booking-status, passenger-management, and scoped concierge-requirements flows. | Critical request-to-book journey passes Playwright coverage and is usable on supported mobile and desktop breakpoints; it does not claim Instant Book for unsupported inventory. |
 | 5. Operator and admin experience | Deliver operator quote management plus constrained administrative oversight, support, and audit access. | Operator and admin access is role-scoped; operators cannot access another operator's data; key administrative actions are audited. |
-| 6. Empty Legs | Introduce first-class empty-leg inventory, search/discovery, qualification, and conversion flow. | Empty legs retain provenance and constraints, can expire/withdraw, and do not bypass quote/booking controls. |
-| 7. AI Concierge | Add vendor-neutral intent parsing to create only a reviewable Trip Request draft. | Parser returns structured fields, confidence/unresolved questions, and provenance; a user or authorized concierge confirms all consequential actions. |
+| 6. Empty Legs | Introduce first-class empty-leg inventory, search/discovery, qualification, and conversion flow using seeded, manual, or mock inventory initially. | Empty legs retain their operator, aircraft, route, window, seats, price/currency, flexibility, provenance, and constraints; they can expire/withdraw and do not bypass quote/booking controls. |
+| 7. AI Concierge | Add vendor-neutral intent parsing and approved assistive functions to create only a reviewable Trip Request draft. | Parser returns structured fields, confidence/unresolved questions, and provenance; explicit authorized-user action is required for terms, operator-confirmed booking, and payment authorization. |
 | 8. Security, testing, observability, and production hardening | Complete operational controls, backups/recovery, monitoring, alerting, performance work, privacy processes, and release readiness. | Documented threat model and incident process; monitored critical journeys; restore drill and load/security testing meet owner-approved targets; production approval occurs only after specialist reviews. |
 
-## Decisions requiring owner approval
+## Decisions requiring specialist review
 
-### A. Product-owner decisions
+The product owner has accepted the managed marketplace, request-to-book,
+Europe-first, provider-boundary, Empty Leg, AI-authority, and premium
+concierge directions. The following remain decisions requiring qualified
+specialist review before production:
 
-1. Marketplace role and operator commercial model: broker, marketplace, or
-   another legal/commercial arrangement; fee payer and fee structure.
-2. V1 service promise: request-for-quote only versus any instant-confirmation
-   claim; operating hours and human concierge escalation.
-3. Initial countries, customer/operator onboarding criteria, and launch
-   geography within Europe.
-4. Required identity/KYC, sanctions, payment, cancellation, refund, tax, and
-   contractual policies following legal and finance advice.
-5. Which V1 ancillary services are customer-visible: pets, catering, baggage,
-   ground transfers, and concierge fulfillment.
-6. Whether Empty Legs are in the initial commercial release or follow after
-   core quote/booking validation.
-7. Data retention, privacy notice, customer-consent model, and approved
-   processors/subprocessors after qualified review.
-8. AI Concierge launch scope, approved vendor posture, human review policy,
-   and customer disclosure.
+1. Exact aviation, commercial, intermediary, agency, and operator contractual
+   characterization and the related customer/operator terms.
+2. Identity/KYC, sanctions, cancellation, refund, tax, and applicable
+   regulatory requirements for the approved operating model and launch markets.
+3. Merchant-of-record, operator settlement, refunds, payment regulation, and
+   payment-provider capability after legal, accounting, and provider review.
+4. Privacy notices, lawful bases, retention, international transfers,
+   processors/subprocessors, and data-subject processes after privacy counsel
+   review.
+5. Production security threat model, access-control assurance, payment scope,
+   incident readiness, and applicable security assurance after specialist
+   review.
 
 ### B. Reversible engineering decisions
 
@@ -261,13 +273,16 @@ requirements and preserves the Identity and Access boundary.
 
 ## V1 Definition of Done
 
-V1 is done only when the owner-approved European scope provides an accessible,
-responsive experience for an authorized customer or delegate to submit a
-private-flight request, receive and compare valid operator-originated quotes,
-select an offer, complete the approved payment/status process, and view a
-traceable booking lifecycle. Authorized operators and administrators must have
-the minimum necessary workflows; all sensitive actions and commercial state
-changes must be auditable.
+V1 is done only when the owner-approved Europe-first scope provides an
+accessible, responsive experience for an authorized customer or delegate to
+submit a private-flight request, receive and compare valid operator-originated
+quotes, select an offer, receive operator confirmation, complete the approved
+payment/status process, and view a traceable booking lifecycle. It includes
+first-class Empty Leg discovery and request/booking controls using approved
+initial inventory sources, plus scoped concierge requirements needed for the
+private-jet journey. Authorized operators and administrators must have the
+minimum necessary workflows; all sensitive actions and commercial state changes
+must be auditable.
 
 It also requires tested authorization and tenant isolation, currency-safe
 pricing, documented operational support and exception paths, reliable
@@ -281,17 +296,23 @@ every future provider or region is supported.
 - Worldwide live operator coverage or a global launch
 - Aircraft dispatch, crew scheduling, or flight operations control
 - Aviation regulatory certification or claims of compliance without specialist review
-- Complex worldwide taxation, escrow, or custody of funds
+- Escrow, banking functionality, raw card storage, complex settlement
+  infrastructure, multi-currency treasury, and unverified merchant-of-record
+  assumptions
 - Fractional ownership, jet cards, loyalty programs, or cryptocurrency
 - Native mobile applications
 - Global real-time aircraft tracking
 - Autonomous AI bookings, payments, or irreversible commercial decisions
-- A fully automated marketplace that removes the need for operator confirmation
+- Full Instant Book unless an approved provider delivers reliable real-time
+  availability, pricing, and confirmation
+- A large general-purpose concierge platform beyond private-jet journey needs
 
 ## Implementation assumptions
 
-The phased plan assumes a web-first Europe launch, request/quote/booking
-workflow, and initially limited operator integrations with a manual fallback.
-Every assumption that changes customer promises, legal obligations, financial
-flows, or the marketplace role must receive owner approval before it shapes
-implementation.
+The phased plan assumes a web-first, Europe-first launch with initial focus on
+Ireland, the United Kingdom, France, Monaco-area airports, Switzerland, Italy,
+Spain, Portugal, Germany, Austria, the Netherlands, and Belgium. It uses a
+request-to-book workflow, initially limited integrations with manual fallback,
+and globally extensible country, currency, timezone, airport, operator, and
+regulatory concepts. The approved marketplace direction remains subject to the
+specialist reviews listed above.
