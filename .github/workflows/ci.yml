@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: sky_bridge_jet
+          POSTGRES_USER: sky_bridge_jet
+          POSTGRES_PASSWORD: sky_bridge_jet_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sky_bridge_jet -d sky_bridge_jet"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      APP_ENVIRONMENT: test
+      DATABASE_NAME: sky_bridge_jet
+      DATABASE_USER: sky_bridge_jet
+      DATABASE_PASSWORD: sky_bridge_jet_ci_password
+      DATABASE_HOST: localhost
+      DATABASE_PORT: 5432
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy src
+      - run: uv run pytest
+      - run: uv run alembic upgrade head
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.21.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir apps/web lint
+      - run: pnpm --dir apps/web format
+      - run: pnpm --dir apps/web typecheck
+      - run: pnpm --dir apps/web test
+      - run: pnpm --dir apps/web build

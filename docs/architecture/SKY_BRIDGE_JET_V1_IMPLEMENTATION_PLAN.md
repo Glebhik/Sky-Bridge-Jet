@@ -316,3 +316,12 @@ request-to-book workflow, initially limited integrations with manual fallback,
 and globally extensible country, currency, timezone, airport, operator, and
 regulatory concepts. The approved marketplace direction remains subject to the
 specialist reviews listed above.
+
+## Phase 1 implementation decisions
+
+Phase 1 uses pnpm workspaces with a committed lockfile for the Next.js
+application and uv with a committed lockfile for the Python API. The API uses
+synchronous SQLAlchemy 2.x consistently across request-scoped sessions,
+readiness checks, and Alembic migrations; FastAPI executes synchronous routes in
+its thread pool. These reversible engineering decisions are recorded in
+ADR-008 and ADR-009.
