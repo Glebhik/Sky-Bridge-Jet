@@ -1,0 +1,85 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-sky_bridge_jet}
+      POSTGRES_USER: ${DATABASE_USER:-sky_bridge_jet}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-sky_bridge_jet_dev_only}
+    ports:
+      - "${DATABASE_PORT:-5432}:5432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${DATABASE_USER:-sky_bridge_jet} -d ${DATABASE_NAME:-sky_bridge_jet}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: ./apps/api
+    command: uv run --locked uvicorn sky_bridge_jet.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      APP_ENVIRONMENT: development
+      DATABASE_NAME: ${DATABASE_NAME:-sky_bridge_jet}
+      DATABASE_USER: ${DATABASE_USER:-sky_bridge_jet}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-sky_bridge_jet_dev_only}
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_URL: postgresql+psycopg://${DATABASE_USER:-sky_bridge_jet}:${DATABASE_PASSWORD:-sky_bridge_jet_dev_only}@db:5432/${DATABASE_NAME:-sky_bridge_jet}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - ./apps/api:/app
+      - api_venv:/app/.venv
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    command: pnpm --dir apps/web dev --hostname 0.0.0.0
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - ./apps/web:/app/apps/web
+      - web_node_modules:/app/apps/web/node_modules
+
+volumes:
+  api_venv:
+  postgres_data:
+  web_node_modules:

@@ -1,0 +1,16 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.coverage
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+apps/api/.venv/
+apps/web/.next/
+apps/web/node_modules/
+node_modules/
+playwright-report/
+test-results/
