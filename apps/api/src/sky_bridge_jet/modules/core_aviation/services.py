@@ -216,7 +216,9 @@ class TripRequestService:
                     raise DomainValidationError(
                         "Passengers must belong to the trip request customer"
                     )
-                trip.passenger_associations.append(TripPassenger(passenger=passenger))
+                trip.passenger_associations.append(
+                    TripPassenger(passenger=passenger, customer_id=data.customer_id)
+                )
 
             if data.requirements.pet is not None:
                 trip.pet_requirement = TripPetRequirement(

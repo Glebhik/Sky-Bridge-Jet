@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     Numeric,
     String,
@@ -108,6 +109,12 @@ class Customer(TimestampedEntity, Base):
 
 class Passenger(TimestampedEntity, Base):
     __tablename__ = "passengers"
+    __table_args__ = (
+        # Composite unique target that lets trip_passengers enforce, via a
+        # composite foreign key, that a passenger and its trip request share
+        # the same owning customer.
+        UniqueConstraint("id", "customer_id", name="uq_passengers_id_customer"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     customer_id: Mapped[UUID] = mapped_column(
@@ -122,7 +129,9 @@ class Passenger(TimestampedEntity, Base):
 
     customer: Mapped[Customer] = relationship(back_populates="passengers")
     trip_associations: Mapped[list[TripPassenger]] = relationship(
-        back_populates="passenger", passive_deletes=True
+        back_populates="passenger",
+        foreign_keys="TripPassenger.passenger_id",
+        passive_deletes=True,
     )
 
     @validates("nationality")
@@ -262,6 +271,10 @@ class Aircraft(TimestampedEntity, Base):
 
 class TripRequest(TimestampedEntity, Base):
     __tablename__ = "trip_requests"
+    __table_args__ = (
+        # Composite unique target for the trip_passengers ownership foreign key.
+        UniqueConstraint("id", "customer_id", name="uq_trip_requests_id_customer"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     customer_id: Mapped[UUID] = mapped_column(
@@ -287,7 +300,10 @@ class TripRequest(TimestampedEntity, Base):
         passive_deletes=True,
     )
     passenger_associations: Mapped[list[TripPassenger]] = relationship(
-        back_populates="trip_request", cascade="all, delete-orphan", passive_deletes=True
+        back_populates="trip_request",
+        foreign_keys="TripPassenger.trip_request_id",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     pet_requirement: Mapped[TripPetRequirement | None] = relationship(
         back_populates="trip_request",
@@ -345,6 +361,25 @@ class TripLeg(TimestampedEntity, Base):
 
 class TripPassenger(Base):
     __tablename__ = "trip_passengers"
+    __table_args__ = (
+        # The shared customer_id column below is constrained by both composite
+        # foreign keys, so PostgreSQL rejects any association whose passenger and
+        # trip request do not resolve to the same customer. This mirrors the
+        # service-layer check as a hard database invariant. customer_id is an
+        # ownership key only and duplicates no passenger identity data (ADR-011).
+        ForeignKeyConstraint(
+            ["trip_request_id", "customer_id"],
+            ["trip_requests.id", "trip_requests.customer_id"],
+            ondelete="CASCADE",
+            name="fk_trip_passengers_trip_request_customer",
+        ),
+        ForeignKeyConstraint(
+            ["passenger_id", "customer_id"],
+            ["passengers.id", "passengers.customer_id"],
+            ondelete="RESTRICT",
+            name="fk_trip_passengers_passenger_customer",
+        ),
+    )
 
     trip_request_id: Mapped[UUID] = mapped_column(
         ForeignKey("trip_requests.id", ondelete="CASCADE"), primary_key=True
@@ -352,12 +387,17 @@ class TripPassenger(Base):
     passenger_id: Mapped[UUID] = mapped_column(
         ForeignKey("passengers.id", ondelete="RESTRICT"), primary_key=True
     )
+    customer_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), index=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, server_default=func.now(), nullable=False
     )
 
-    trip_request: Mapped[TripRequest] = relationship(back_populates="passenger_associations")
-    passenger: Mapped[Passenger] = relationship(back_populates="trip_associations")
+    trip_request: Mapped[TripRequest] = relationship(
+        back_populates="passenger_associations", foreign_keys=[trip_request_id]
+    )
+    passenger: Mapped[Passenger] = relationship(
+        back_populates="trip_associations", foreign_keys=[passenger_id]
+    )
 
 
 class TripPetRequirement(Base):

@@ -1,6 +1,5 @@
 import logging
 import time
-import uuid
 from collections.abc import Awaitable, Callable
 from typing import Annotated
 
@@ -12,6 +11,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from sky_bridge_jet.api.router import api_v1_router
 from sky_bridge_jet.core.config import get_settings
+from sky_bridge_jet.core.correlation import CORRELATION_ID_HEADER, sanitize_correlation_id
 from sky_bridge_jet.core.logging import configure_logging
 from sky_bridge_jet.db.session import get_db
 from sky_bridge_jet.modules.core_aviation.router import register_exception_handlers
@@ -29,11 +29,11 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        correlation_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        correlation_id = sanitize_correlation_id(request.headers.get(CORRELATION_ID_HEADER))
         request.state.correlation_id = correlation_id
         started_at = time.perf_counter()
         response = await call_next(request)
-        response.headers["X-Request-ID"] = correlation_id
+        response.headers[CORRELATION_ID_HEADER] = correlation_id
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -53,7 +53,10 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 app = FastAPI(
     title="Sky Bridge Jet API",
     version="0.1.0",
-    responses={status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ErrorResponse}},
+    responses={
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ErrorResponse},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": ErrorResponse},
+    },
 )
 app.add_middleware(RequestContextMiddleware)
 register_exception_handlers(app)

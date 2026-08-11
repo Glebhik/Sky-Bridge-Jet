@@ -34,10 +34,14 @@ def test_openapi_documents_safe_error_envelope_for_all_phase_two_validation_resp
         "/api/v1/trip-requests/{trip_request_id}/cancel",
     )
 
+    error_ref = {"$ref": "#/components/schemas/ErrorResponse"}
     for path in phase_two_paths:
         for operation in schema["paths"][path].values():
-            response_schema = operation["responses"]["422"]["content"]["application/json"]["schema"]
-            assert response_schema == {"$ref": "#/components/schemas/ErrorResponse"}
+            responses = operation["responses"]
+            # The approved safe envelope must document both the corrected 422
+            # validation contract and the generic 500 persistence failure.
+            assert responses["422"]["content"]["application/json"]["schema"] == error_ref
+            assert responses["500"]["content"]["application/json"]["schema"] == error_ref
 
     assert "HTTPValidationError" not in schema["components"]["schemas"]
 
