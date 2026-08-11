@@ -233,6 +233,10 @@ class Aircraft(TimestampedEntity, Base):
     __tablename__ = "aircraft"
     __table_args__ = (
         CheckConstraint("passenger_capacity > 0", name="ck_aircraft_capacity_positive"),
+        # Composite unique target that lets operator offers enforce, via a
+        # composite foreign key, that an offered aircraft belongs to the
+        # offering operator.
+        UniqueConstraint("id", "operator_id", name="uq_aircraft_id_operator"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)

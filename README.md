@@ -4,17 +4,21 @@ Sky Bridge Jet is a premium private aviation marketplace and charter intermediar
 It is a managed marketplace: licensed operators remain responsible for flight
 operation and execution.
 
-## Phase 2 status
+## Phase 3 status
 
-This repository contains the Phase 1 engineering foundation plus the Phase 2
-core private-aviation backend domain. It provides a modular-monolith API shell,
-a responsive Next.js shell, local PostgreSQL, migrations, test harnesses, and
-pull-request CI. Phase 2 adds Customer, Passenger, Airport, Operator,
-Aircraft, TripRequest, TripLeg, trip requirements, and passenger associations.
+This repository contains the Phase 1 engineering foundation, the Phase 2 core
+private-aviation backend domain, and the Phase 3 quotes and operator offers
+domain. It provides a modular-monolith API shell, a responsive Next.js shell,
+local PostgreSQL, migrations, test harnesses, and pull-request CI. Phase 2 adds
+Customer, Passenger, Airport, Operator, Aircraft, TripRequest, TripLeg, trip
+requirements, and passenger associations. Phase 3 adds OperatorOffer: operators
+respond to a submitted TripRequest with priced offers, and a customer selects
+one valid offer (commercial intent only — not a booking).
 
-Phase 2 deliberately does **not** implement quote, pricing, booking, payment,
-Empty Legs, identity workflows, provider integrations, portals, notifications,
-dispatch, crew, flight operations, or AI.
+Phase 3 deliberately does **not** implement booking, payment, payment
+authorization, PSPs, contracts, invoices, Empty Legs, identity/auth workflows,
+provider integrations, portals, notifications, dispatch, crew, flight
+operations, FX, or AI.
 
 ## Architecture
 
@@ -144,10 +148,13 @@ Platform endpoints:
 - `GET /api/v1` establishes the versioned API namespace.
 - Phase 2 business resources and commands are exposed below `/api/v1`; see
   [the core domain guide](docs/architecture/PHASE_2_CORE_DOMAIN.md).
+- Phase 3 operator offers and customer selection are exposed below `/api/v1`;
+  see [the quotes and operator offers guide](docs/architecture/PHASE_3_QUOTES_OPERATOR_OFFERS.md).
 
 ## Documentation
 
 - [Product vision](docs/product/SKY_BRIDGE_JET_V1_PRODUCT_VISION.md)
 - [Architecture and implementation plan](docs/architecture/SKY_BRIDGE_JET_V1_IMPLEMENTATION_PLAN.md)
 - [Phase 2 core domain](docs/architecture/PHASE_2_CORE_DOMAIN.md)
+- [Phase 3 quotes and operator offers](docs/architecture/PHASE_3_QUOTES_OPERATOR_OFFERS.md)
 - [Architecture decisions](docs/decisions/)
