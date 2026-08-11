@@ -13,6 +13,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     func,
 )
@@ -61,6 +62,15 @@ class OperatorOffer(Base):
         ),
         CheckConstraint(
             "currency IN ('EUR', 'GBP', 'USD')", name="ck_operator_offers_currency_supported"
+        ),
+        # Composite unique target so a booking's composite foreign key can enforce
+        # that its offer, trip, operator, and aircraft all agree (Phase 4).
+        UniqueConstraint(
+            "id",
+            "trip_request_id",
+            "operator_id",
+            "aircraft_id",
+            name="uq_operator_offers_booking_ref",
         ),
         # At most one selected offer per trip request (single-selection invariant).
         Index(
