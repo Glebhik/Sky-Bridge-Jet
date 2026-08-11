@@ -67,6 +67,17 @@ class Booking(Base):
         ),
         CheckConstraint("currency IN ('EUR', 'GBP', 'USD')", name="ck_bookings_currency_supported"),
         UniqueConstraint("reference", name="uq_bookings_reference"),
+        # Composite unique target so a payment's commercial snapshot foreign key
+        # cannot diverge from the booking's commercial amounts (Phase 5).
+        UniqueConstraint(
+            "id",
+            "currency",
+            "operator_amount_minor",
+            "platform_fee_minor",
+            "tax_amount_minor",
+            "total_amount_minor",
+            name="uq_bookings_commercial_snapshot",
+        ),
         # At most one active booking workflow per trip request. Rejected and
         # cancelled bookings remain as history and do not block a new workflow.
         Index(
