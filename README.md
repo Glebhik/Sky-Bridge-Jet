@@ -4,14 +4,17 @@ Sky Bridge Jet is a premium private aviation marketplace and charter intermediar
 It is a managed marketplace: licensed operators remain responsible for flight
 operation and execution.
 
-## Phase 1 status
+## Phase 2 status
 
-This repository contains the Phase 1 engineering foundation only. It provides a
-modular-monolith API shell, a responsive Next.js shell, local PostgreSQL,
-migrations, test harnesses, and pull-request CI. It deliberately does **not**
-implement customer, passenger, operator, aircraft, airport, trip request,
-quote, pricing, booking, Empty Leg, payment, authentication, or portal
-business workflows.
+This repository contains the Phase 1 engineering foundation plus the Phase 2
+core private-aviation backend domain. It provides a modular-monolith API shell,
+a responsive Next.js shell, local PostgreSQL, migrations, test harnesses, and
+pull-request CI. Phase 2 adds Customer, Passenger, Airport, Operator,
+Aircraft, TripRequest, TripLeg, trip requirements, and passenger associations.
+
+Phase 2 deliberately does **not** implement quote, pricing, booking, payment,
+Empty Legs, identity workflows, provider integrations, portals, notifications,
+dispatch, crew, flight operations, or AI.
 
 ## Architecture
 
@@ -59,8 +62,9 @@ cross-boundary contract exists.
 2. Install dependencies and Playwright Chromium: `make setup`.
 3. Start PostgreSQL: `docker compose up -d db`.
 4. Apply migrations: `make migrate`.
-5. Run the API: `make dev-api`.
-6. Run the web shell in another terminal: `make dev-web`.
+5. Load the small deterministic development/demo airport set: `make seed-airports`.
+6. Run the API: `make dev-api`.
+7. Run the web shell in another terminal: `make dev-web`.
 
 The web app runs at <http://localhost:3000>; the API runs at
 <http://localhost:8000>. `NEXT_PUBLIC_API_BASE_URL` configures the browser-safe
@@ -69,7 +73,7 @@ API base URL; it defaults to `http://localhost:8000`.
 Alternatively, run the dev-focused container stack with `make dev`. The Compose
 API connects to the `db` service and the web service is available on port 3000.
 After the stack is healthy, apply migrations inside the API image with
-`make migrate-compose`.
+`make migrate-compose`, then load seed data with `make seed-airports-compose`.
 
 The values in `.env.example` are development examples only. The API, Alembic,
 and host-based Make targets read this repository-root `.env`. Docker Compose
@@ -105,7 +109,13 @@ Alembic imports every `models.py` under
 `sky_bridge_jet.modules.<bounded_context>` before inspecting
 `sky_bridge_jet.db.base.Base.metadata`. Future bounded contexts must keep ORM
 mappings in that convention; no domain module exists in Phase 1. The baseline
-migration intentionally contains no business schema.
+migration intentionally contains no business schema. The Phase 2 core aviation
+module follows this convention.
+
+Phase 2's migration creates the core aviation schema. Apply it with `make
+migrate`, then load only the deterministic development/demo airports with
+`make seed-airports`. The seed is idempotent and is not a complete production
+airport data source.
 
 ## Quality commands
 
@@ -131,11 +141,13 @@ Platform endpoints:
 - `GET /health` returns `{"status":"ok"}` without a database dependency.
 - `GET /ready` checks PostgreSQL with `SELECT 1`; it returns HTTP 503 and a
   non-sensitive unavailable status when PostgreSQL cannot be reached.
-- `GET /api/v1` establishes the versioned API namespace without business
-  endpoints.
+- `GET /api/v1` establishes the versioned API namespace.
+- Phase 2 business resources and commands are exposed below `/api/v1`; see
+  [the core domain guide](docs/architecture/PHASE_2_CORE_DOMAIN.md).
 
 ## Documentation
 
 - [Product vision](docs/product/SKY_BRIDGE_JET_V1_PRODUCT_VISION.md)
 - [Architecture and implementation plan](docs/architecture/SKY_BRIDGE_JET_V1_IMPLEMENTATION_PLAN.md)
+- [Phase 2 core domain](docs/architecture/PHASE_2_CORE_DOMAIN.md)
 - [Architecture decisions](docs/decisions/)
