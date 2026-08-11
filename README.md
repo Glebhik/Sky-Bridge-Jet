@@ -4,25 +4,27 @@ Sky Bridge Jet is a premium private aviation marketplace and charter intermediar
 It is a managed marketplace: licensed operators remain responsible for flight
 operation and execution.
 
-## Phase 4 status
+## Phase 5 status
 
 This repository contains the Phase 1 engineering foundation, the Phase 2 core
 private-aviation backend domain, the Phase 3 quotes and operator offers domain,
-and the Phase 4 booking and reservation orchestration domain. It provides a
-modular-monolith API shell, a responsive Next.js shell, local PostgreSQL,
-migrations, test harnesses, and pull-request CI. Phase 2 adds Customer,
-Passenger, Airport, Operator, Aircraft, TripRequest, TripLeg, trip requirements,
-and passenger associations. Phase 3 adds OperatorOffer: operators respond to a
-submitted TripRequest with priced offers, and a customer selects one valid offer.
-Phase 4 adds Booking: a selected offer becomes a booking workflow that the
-responsible operator can confirm or reject, with cancellation as workflow state
-(a selected offer is not a confirmed booking).
+the Phase 4 booking and reservation orchestration domain, and the Phase 5
+payment and settlement core. It provides a modular-monolith API shell, a
+responsive Next.js shell, local PostgreSQL, migrations, test harnesses, and
+pull-request CI. Phase 2 adds the core aviation domain. Phase 3 adds OperatorOffer
+(operators offer, customer selects). Phase 4 adds Booking (operator confirms or
+rejects). Phase 5 adds Payment: a provider-neutral financial state machine around
+a booking — authorization, capture (after operator confirmation), void, refund,
+operator/platform allocation, and settlement eligibility — using a deterministic
+fake provider. **No real money moves.**
 
-Phase 4 deliberately does **not** implement payment, payment authorization,
-capture, refunds, invoices, operator payouts, PSPs, real provider integrations,
-contracts/e-signatures, cancellation-fee calculations, Empty Legs,
+Phase 5 deliberately does **not** implement live Stripe/Adyen or any real PSP,
+real money movement, wallets or custody, operator payouts, a tax/VAT engine,
+invoices, credit notes, an accounting ledger, chargebacks, KYC/KYB, AML,
+cancellation-fee calculation, real provider integrations, Empty Legs,
 identity/auth workflows, portals, notifications, dispatch, crew, flight
-operations, FX, or AI.
+operations, FX, or AI. Legal, PSD2/payments, tax, and aviation classifications
+are documented as specialist-review gates, not solved in software.
 
 ## Architecture
 
@@ -156,6 +158,8 @@ Platform endpoints:
   see [the quotes and operator offers guide](docs/architecture/PHASE_3_QUOTES_OPERATOR_OFFERS.md).
 - Phase 4 bookings and operator confirmation are exposed below `/api/v1`; see
   [the booking orchestration guide](docs/architecture/PHASE_4_BOOKING_RESERVATION_ORCHESTRATION.md).
+- Phase 5 payments (authorize, capture, void, refund, allocation) are exposed
+  below `/api/v1`; see [the payment & settlement core guide](docs/architecture/PHASE_5_PAYMENT_SETTLEMENT_CORE.md).
 
 ## Documentation
 
@@ -164,4 +168,5 @@ Platform endpoints:
 - [Phase 2 core domain](docs/architecture/PHASE_2_CORE_DOMAIN.md)
 - [Phase 3 quotes and operator offers](docs/architecture/PHASE_3_QUOTES_OPERATOR_OFFERS.md)
 - [Phase 4 booking & reservation orchestration](docs/architecture/PHASE_4_BOOKING_RESERVATION_ORCHESTRATION.md)
+- [Phase 5 payment & settlement core](docs/architecture/PHASE_5_PAYMENT_SETTLEMENT_CORE.md)
 - [Architecture decisions](docs/decisions/)
