@@ -117,40 +117,60 @@ def test_reference_opaque_and_unique() -> None:
 def test_fake_provider_deterministic_outcomes() -> None:
     provider = FakePaymentProvider()
 
-    ok = provider.authorize(amount_minor=1000, currency="EUR", payment_method_reference=None)
+    ok = provider.authorize(
+        amount_minor=1000, currency="EUR", payment_method_reference=None, idempotency_key="k-ok"
+    )
     assert ok.outcome is ProviderOutcome.SUCCEEDED and ok.provider_reference is not None
     assert (
         provider.capture(
-            provider_reference=ok.provider_reference, amount_minor=1000, currency="EUR"
+            provider_reference=ok.provider_reference,
+            amount_minor=1000,
+            currency="EUR",
+            idempotency_key="k-ok-cap",
         ).outcome
         is ProviderOutcome.SUCCEEDED
     )
 
     declined = provider.authorize(
-        amount_minor=1000, currency="EUR", payment_method_reference=DECLINE_AUTHORIZATION
+        amount_minor=1000,
+        currency="EUR",
+        payment_method_reference=DECLINE_AUTHORIZATION,
+        idempotency_key="k-decline",
     )
     assert declined.outcome is ProviderOutcome.FAILED
     assert declined.failure_code == "authorization_declined"
 
     cap_fail_auth = provider.authorize(
-        amount_minor=1000, currency="EUR", payment_method_reference=DECLINE_CAPTURE
+        amount_minor=1000,
+        currency="EUR",
+        payment_method_reference=DECLINE_CAPTURE,
+        idempotency_key="k-capfail",
     )
     assert cap_fail_auth.outcome is ProviderOutcome.SUCCEEDED
     assert cap_fail_auth.provider_reference is not None
     assert (
         provider.capture(
-            provider_reference=cap_fail_auth.provider_reference, amount_minor=1000, currency="EUR"
+            provider_reference=cap_fail_auth.provider_reference,
+            amount_minor=1000,
+            currency="EUR",
+            idempotency_key="k-capfail-cap",
         ).outcome
         is ProviderOutcome.FAILED
     )
 
     ref_fail_auth = provider.authorize(
-        amount_minor=1000, currency="EUR", payment_method_reference=DECLINE_REFUND
+        amount_minor=1000,
+        currency="EUR",
+        payment_method_reference=DECLINE_REFUND,
+        idempotency_key="k-reffail",
     )
     assert ref_fail_auth.provider_reference is not None
     assert (
         provider.refund(
-            provider_reference=ref_fail_auth.provider_reference, amount_minor=100, currency="EUR"
+            provider_reference=ref_fail_auth.provider_reference,
+            amount_minor=100,
+            currency="EUR",
+            idempotency_key="k-reffail-ref",
         ).outcome
         is ProviderOutcome.FAILED
     )

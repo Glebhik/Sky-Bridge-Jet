@@ -5,10 +5,48 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
+from sky_bridge_jet.modules.payments.domain import PaymentProviderKind
+
 
 class ProviderOutcome(StrEnum):
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
+    # The customer must complete an action (e.g. 3-D Secure) before the provider
+    # can finalize the operation. The domain treats this as a distinct state.
+    REQUIRES_ACTION = "REQUIRES_ACTION"
+
+
+class ProviderErrorCategory(StrEnum):
+    """Stable, provider-neutral categories for provider failures."""
+
+    PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
+    PROVIDER_DECLINED = "PROVIDER_DECLINED"
+    PROVIDER_REQUIRES_ACTION = "PROVIDER_REQUIRES_ACTION"
+    PROVIDER_INVALID_STATE = "PROVIDER_INVALID_STATE"
+    PROVIDER_CONFIGURATION_ERROR = "PROVIDER_CONFIGURATION_ERROR"
+    PROVIDER_AUTHENTICATION_ERROR = "PROVIDER_AUTHENTICATION_ERROR"
+
+
+class PaymentProviderError(Exception):
+    """Raised by an adapter for infrastructure failures; never leaks raw provider data."""
+
+    def __init__(
+        self, category: ProviderErrorCategory, message: str = "A payment provider error occurred"
+    ) -> None:
+        super().__init__(message)
+        self.category = category
+
+
+@dataclass(frozen=True)
+class ClientAction:
+    """Safe, non-secret-free client-action metadata for a customer to complete (SCA).
+
+    The ``client_secret`` is required by the provider's client SDK to complete the
+    action; it is returned once to the client and never persisted or logged.
+    """
+
+    action_type: str
+    client_secret: str
 
 
 @dataclass(frozen=True)
@@ -18,6 +56,8 @@ class ProviderResult:
     outcome: ProviderOutcome
     provider_reference: str | None
     failure_code: str | None = None
+    provider_status: str | None = None
+    client_action: ClientAction | None = None
 
 
 class PaymentProvider(Protocol):
@@ -28,18 +68,25 @@ class PaymentProvider(Protocol):
     provider exceptions.
     """
 
+    kind: PaymentProviderKind
+
     def authorize(
-        self, *, amount_minor: int, currency: str, payment_method_reference: str | None
+        self,
+        *,
+        amount_minor: int,
+        currency: str,
+        payment_method_reference: str | None,
+        idempotency_key: str,
     ) -> ProviderResult: ...
 
     def capture(
-        self, *, provider_reference: str, amount_minor: int, currency: str
+        self, *, provider_reference: str, amount_minor: int, currency: str, idempotency_key: str
     ) -> ProviderResult: ...
 
-    def void(self, *, provider_reference: str) -> ProviderResult: ...
+    def void(self, *, provider_reference: str, idempotency_key: str) -> ProviderResult: ...
 
     def refund(
-        self, *, provider_reference: str, amount_minor: int, currency: str
+        self, *, provider_reference: str, amount_minor: int, currency: str, idempotency_key: str
     ) -> ProviderResult: ...
 
 
@@ -63,11 +110,18 @@ class FakePaymentProvider:
     adapter stays stateless.
     """
 
+    kind = PaymentProviderKind.FAKE
+
     def _reference(self, marker: str) -> str:
         return f"fauth_{marker}_{secrets.token_hex(8)}"
 
     def authorize(
-        self, *, amount_minor: int, currency: str, payment_method_reference: str | None
+        self,
+        *,
+        amount_minor: int,
+        currency: str,
+        payment_method_reference: str | None,
+        idempotency_key: str,
     ) -> ProviderResult:
         if payment_method_reference == DECLINE_AUTHORIZATION:
             return ProviderResult(
@@ -84,7 +138,7 @@ class FakePaymentProvider:
         return ProviderResult(outcome=ProviderOutcome.SUCCEEDED, provider_reference=reference)
 
     def capture(
-        self, *, provider_reference: str, amount_minor: int, currency: str
+        self, *, provider_reference: str, amount_minor: int, currency: str, idempotency_key: str
     ) -> ProviderResult:
         if _CAPTURE_FAIL_MARKER in provider_reference:
             return ProviderResult(
@@ -97,14 +151,14 @@ class FakePaymentProvider:
             provider_reference=provider_reference.replace("fauth", "fcap", 1),
         )
 
-    def void(self, *, provider_reference: str) -> ProviderResult:
+    def void(self, *, provider_reference: str, idempotency_key: str) -> ProviderResult:
         return ProviderResult(
             outcome=ProviderOutcome.SUCCEEDED,
             provider_reference=provider_reference.replace("fauth", "fvoid", 1),
         )
 
     def refund(
-        self, *, provider_reference: str, amount_minor: int, currency: str
+        self, *, provider_reference: str, amount_minor: int, currency: str, idempotency_key: str
     ) -> ProviderResult:
         if _REFUND_FAIL_MARKER in provider_reference:
             return ProviderResult(

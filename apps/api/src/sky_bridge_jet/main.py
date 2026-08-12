@@ -18,6 +18,7 @@ from sky_bridge_jet.modules.bookings.router import register_booking_exception_ha
 from sky_bridge_jet.modules.compliance.router import register_compliance_exception_handlers
 from sky_bridge_jet.modules.core_aviation.router import register_exception_handlers
 from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
+from sky_bridge_jet.modules.financials.router import register_financial_exception_handlers
 from sky_bridge_jet.modules.offers.router import register_offer_exception_handlers
 from sky_bridge_jet.modules.payments.router import register_payment_exception_handlers
 
@@ -68,6 +69,7 @@ register_offer_exception_handlers(app)
 register_booking_exception_handlers(app)
 register_payment_exception_handlers(app)
 register_compliance_exception_handlers(app)
+register_financial_exception_handlers(app)
 app.include_router(api_v1_router)
 DatabaseSession = Annotated[Session, Depends(get_db)]
 

@@ -4,30 +4,43 @@ Sky Bridge Jet is a premium private aviation marketplace and charter intermediar
 It is a managed marketplace: licensed operators remain responsible for flight
 operation and execution.
 
-## Phase 6 status
+## Phase 7 status
 
 This repository contains the Phase 1 engineering foundation, the Phase 2 core
 private-aviation backend domain, the Phase 3 quotes and operator offers domain,
 the Phase 4 booking and reservation orchestration domain, the Phase 5 payment and
-settlement core, and the Phase 6 operator compliance and marketplace admission
-domain. It provides a modular-monolith API shell, a responsive Next.js shell,
-local PostgreSQL, migrations, test harnesses, and pull-request CI. Phase 2 adds
-the core aviation domain. Phase 3 adds OperatorOffer. Phase 4 adds Booking.
-Phase 5 adds Payment (provider-neutral, no real money moves). Phase 6 adds
-marketplace admission: operators submit authority/insurance/aircraft evidence,
-platform reviewers admit or reject them, and offer creation and booking
-confirmation are gated on current operator/aircraft eligibility. `APPROVED` means
-"admitted to the Sky Bridge Jet marketplace" — **not** a government certification.
+settlement core, the Phase 6 operator compliance and marketplace admission domain,
+and the Phase 7 production-payments and operator financial-onboarding integration.
+It provides a modular-monolith API shell, a responsive Next.js shell, local
+PostgreSQL, migrations, test harnesses, and pull-request CI. Phase 2 adds the core
+aviation domain. Phase 3 adds OperatorOffer. Phase 4 adds Booking. Phase 5 adds
+Payment (provider-neutral, no real money moves). Phase 6 adds marketplace
+admission, gating offer creation and booking confirmation on current
+operator/aircraft eligibility.
 
-Phase 6 deliberately does **not** implement automated government/regulator
-verification (EASA/FAA/CAA), route-legality/traffic-rights/cabotage/sanctions
-engines, KYC/KYB/AML/PEP, real document storage or identity verification,
-insurance-sufficiency legal logic, automatic AI compliance approval, or — carried
-forward from prior phases — live PSPs, real money movement, wallets/custody,
-payouts, a tax/VAT engine, invoices, an accounting ledger, chargebacks, Empty
-Legs, identity/auth workflows, portals, notifications, dispatch, crew, flight
-operations, FX, or AI. Legal, PSD2/payments, tax, and aviation classifications
-are documented as specialist-review gates, not solved in software.
+Phase 7 connects the provider-neutral payment core to a **real Stripe Connect
+architecture in Stripe TEST MODE ONLY** (no real money moves). Stripe is an
+adapter behind the existing port — the `FakePaymentProvider` remains the default,
+and test mode is *enforced* fail-closed (a live key is rejected). It adds a
+separate **operator financial-onboarding** domain (`OperatorConnectedAccount`,
+distinct from Phase 6 aviation compliance) that records provider-reported
+capability state only, a financial eligibility gate for PSP-backed payments,
+provider-neutral SCA (`requires_customer_action`) support, and a verified,
+idempotent, data-minimized webhook pipeline. See
+[the Phase 7 guide](docs/architecture/PHASE_7_PRODUCTION_PAYMENTS_OPERATOR_FINANCIAL_ONBOARDING.md).
+
+Phase 7 deliberately does **not** implement live-mode payments, real money
+movement, transfers/payouts (no scheduler; the Phase 5 allocation stays
+authoritative), Merchant-of-Record, disputes/chargebacks, a tax/VAT engine, or an
+independent KYC/KYB/AML/PEP/sanctions engine — the provider owns financial
+identity checks, and the platform stores no bank/identity/beneficial-owner data.
+Carried forward from prior phases, it also does **not** implement automated
+government/regulator verification (EASA/FAA/CAA), route-legality/traffic-rights/
+cabotage engines, real document storage or identity verification, wallets/custody,
+invoices, an accounting ledger, Empty Legs, identity/auth workflows, portals,
+notifications, dispatch, crew, flight operations, FX, or AI. Legal, PSD2/payments,
+tax, and aviation classifications are documented as specialist-review gates, not
+solved in software.
 
 ## Architecture
 
@@ -166,6 +179,10 @@ Platform endpoints:
 - Phase 6 operator compliance (admission, evidence, aircraft authorization,
   eligibility) is exposed below `/api/v1` and gates offers and booking
   confirmation; see [the operator compliance guide](docs/architecture/PHASE_6_OPERATOR_COMPLIANCE_MARKETPLACE_ADMISSION.md).
+- Phase 7 operator financial onboarding (connected account, onboarding link,
+  synchronize, financial eligibility) and the verified Stripe webhook endpoint are
+  exposed below `/api/v1`; PSP-backed payments (Stripe test mode) require financial
+  onboarding. See [the production payments & financial onboarding guide](docs/architecture/PHASE_7_PRODUCTION_PAYMENTS_OPERATOR_FINANCIAL_ONBOARDING.md).
 
 ## Documentation
 
@@ -176,4 +193,5 @@ Platform endpoints:
 - [Phase 4 booking & reservation orchestration](docs/architecture/PHASE_4_BOOKING_RESERVATION_ORCHESTRATION.md)
 - [Phase 5 payment & settlement core](docs/architecture/PHASE_5_PAYMENT_SETTLEMENT_CORE.md)
 - [Phase 6 operator compliance & marketplace admission](docs/architecture/PHASE_6_OPERATOR_COMPLIANCE_MARKETPLACE_ADMISSION.md)
+- [Phase 7 production payments & operator financial onboarding](docs/architecture/PHASE_7_PRODUCTION_PAYMENTS_OPERATOR_FINANCIAL_ONBOARDING.md)
 - [Architecture decisions](docs/decisions/)
