@@ -5,6 +5,8 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from sky_bridge_jet.modules.compliance.domain import ComplianceGateError
+from sky_bridge_jet.modules.compliance.evaluator import ComplianceEvaluator
 from sky_bridge_jet.modules.core_aviation.domain import (
     DomainValidationError,
     ResourceNotFoundError,
@@ -74,6 +76,19 @@ class OperatorOfferService:
                 raise _not_found("Aircraft")
             if aircraft.operator_id != operator.id:
                 raise DomainValidationError("Aircraft does not belong to the offering operator")
+
+            # Phase 6 marketplace-admission gate: the operator and this specific
+            # aircraft must currently be marketplace-eligible. The evaluation locks
+            # the admission/authorization rows so a concurrent suspension cannot
+            # slip past.
+            decision = ComplianceEvaluator(self.session).evaluate_operator_aircraft(
+                operator.id, aircraft.id, lock=True
+            )
+            if not decision.eligible:
+                raise ComplianceGateError(
+                    "Operator or aircraft is not currently eligible to create offers",
+                    decision.reasons,
+                )
 
             platform_fee_minor = compute_platform_fee_minor(data.operator_amount_minor)
             total_amount_minor = compute_total_minor(

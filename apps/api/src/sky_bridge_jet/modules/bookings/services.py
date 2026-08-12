@@ -21,6 +21,8 @@ from sky_bridge_jet.modules.bookings.schemas import (
     BookingCreate,
     BookingReject,
 )
+from sky_bridge_jet.modules.compliance.domain import ComplianceGateError
+from sky_bridge_jet.modules.compliance.evaluator import ComplianceEvaluator
 from sky_bridge_jet.modules.core_aviation.domain import ResourceNotFoundError, TripRequestStatus
 from sky_bridge_jet.modules.core_aviation.models import TripRequest
 from sky_bridge_jet.modules.core_aviation.repositories import TripRequestRepository
@@ -124,6 +126,20 @@ class BookingService:
             if offer is None or offer.status is not OfferStatus.SELECTED:
                 raise BookingEligibilityError(
                     "The selected offer is no longer the authoritative commercial basis"
+                )
+
+            # Phase 6 recheck: compliance can lapse after an offer is created, so
+            # re-evaluate current operator/aircraft eligibility before confirming.
+            # Locks admission/authorization rows so a concurrent suspension cannot
+            # yield a booking confirmed under suspended compliance. The booking is
+            # not mutated on failure; history is preserved.
+            decision = ComplianceEvaluator(self.session).evaluate_operator_aircraft(
+                booking.operator_id, booking.aircraft_id, lock=True
+            )
+            if not decision.eligible:
+                raise ComplianceGateError(
+                    "Operator or aircraft is not currently eligible to confirm this booking",
+                    decision.reasons,
                 )
 
             booking.status = BookingStatus.CONFIRMED

@@ -4,25 +4,28 @@ Sky Bridge Jet is a premium private aviation marketplace and charter intermediar
 It is a managed marketplace: licensed operators remain responsible for flight
 operation and execution.
 
-## Phase 5 status
+## Phase 6 status
 
 This repository contains the Phase 1 engineering foundation, the Phase 2 core
 private-aviation backend domain, the Phase 3 quotes and operator offers domain,
-the Phase 4 booking and reservation orchestration domain, and the Phase 5
-payment and settlement core. It provides a modular-monolith API shell, a
-responsive Next.js shell, local PostgreSQL, migrations, test harnesses, and
-pull-request CI. Phase 2 adds the core aviation domain. Phase 3 adds OperatorOffer
-(operators offer, customer selects). Phase 4 adds Booking (operator confirms or
-rejects). Phase 5 adds Payment: a provider-neutral financial state machine around
-a booking — authorization, capture (after operator confirmation), void, refund,
-operator/platform allocation, and settlement eligibility — using a deterministic
-fake provider. **No real money moves.**
+the Phase 4 booking and reservation orchestration domain, the Phase 5 payment and
+settlement core, and the Phase 6 operator compliance and marketplace admission
+domain. It provides a modular-monolith API shell, a responsive Next.js shell,
+local PostgreSQL, migrations, test harnesses, and pull-request CI. Phase 2 adds
+the core aviation domain. Phase 3 adds OperatorOffer. Phase 4 adds Booking.
+Phase 5 adds Payment (provider-neutral, no real money moves). Phase 6 adds
+marketplace admission: operators submit authority/insurance/aircraft evidence,
+platform reviewers admit or reject them, and offer creation and booking
+confirmation are gated on current operator/aircraft eligibility. `APPROVED` means
+"admitted to the Sky Bridge Jet marketplace" — **not** a government certification.
 
-Phase 5 deliberately does **not** implement live Stripe/Adyen or any real PSP,
-real money movement, wallets or custody, operator payouts, a tax/VAT engine,
-invoices, credit notes, an accounting ledger, chargebacks, KYC/KYB, AML,
-cancellation-fee calculation, real provider integrations, Empty Legs,
-identity/auth workflows, portals, notifications, dispatch, crew, flight
+Phase 6 deliberately does **not** implement automated government/regulator
+verification (EASA/FAA/CAA), route-legality/traffic-rights/cabotage/sanctions
+engines, KYC/KYB/AML/PEP, real document storage or identity verification,
+insurance-sufficiency legal logic, automatic AI compliance approval, or — carried
+forward from prior phases — live PSPs, real money movement, wallets/custody,
+payouts, a tax/VAT engine, invoices, an accounting ledger, chargebacks, Empty
+Legs, identity/auth workflows, portals, notifications, dispatch, crew, flight
 operations, FX, or AI. Legal, PSD2/payments, tax, and aviation classifications
 are documented as specialist-review gates, not solved in software.
 
@@ -160,6 +163,9 @@ Platform endpoints:
   [the booking orchestration guide](docs/architecture/PHASE_4_BOOKING_RESERVATION_ORCHESTRATION.md).
 - Phase 5 payments (authorize, capture, void, refund, allocation) are exposed
   below `/api/v1`; see [the payment & settlement core guide](docs/architecture/PHASE_5_PAYMENT_SETTLEMENT_CORE.md).
+- Phase 6 operator compliance (admission, evidence, aircraft authorization,
+  eligibility) is exposed below `/api/v1` and gates offers and booking
+  confirmation; see [the operator compliance guide](docs/architecture/PHASE_6_OPERATOR_COMPLIANCE_MARKETPLACE_ADMISSION.md).
 
 ## Documentation
 
@@ -169,4 +175,5 @@ Platform endpoints:
 - [Phase 3 quotes and operator offers](docs/architecture/PHASE_3_QUOTES_OPERATOR_OFFERS.md)
 - [Phase 4 booking & reservation orchestration](docs/architecture/PHASE_4_BOOKING_RESERVATION_ORCHESTRATION.md)
 - [Phase 5 payment & settlement core](docs/architecture/PHASE_5_PAYMENT_SETTLEMENT_CORE.md)
+- [Phase 6 operator compliance & marketplace admission](docs/architecture/PHASE_6_OPERATOR_COMPLIANCE_MARKETPLACE_ADMISSION.md)
 - [Architecture decisions](docs/decisions/)
