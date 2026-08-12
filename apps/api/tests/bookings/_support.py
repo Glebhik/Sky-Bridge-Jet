@@ -66,7 +66,62 @@ def create_aircraft(client: TestClient, operator_id: str) -> dict[str, Any]:
         },
     )
     assert response.status_code == 201, response.text
-    return response.json()
+    aircraft = response.json()
+    make_operator_eligible(client, operator_id, aircraft["id"])
+    return aircraft
+
+
+_REVIEWER = {"actor_type": "PLATFORM_REVIEWER"}
+
+
+def _eligibility_expiry() -> str:
+    return (datetime.now(UTC) + timedelta(days=365)).isoformat()
+
+
+def make_operator_eligible(client: TestClient, operator_id: str, aircraft_id: str) -> None:
+    """Admit the operator and authorize the aircraft so offer creation is allowed."""
+    if client.get(f"/api/v1/operators/{operator_id}/admission").status_code != 200:
+        client.post(f"/api/v1/operators/{operator_id}/admission")
+        client.post(f"/api/v1/operators/{operator_id}/admission/submit")
+        client.post(
+            f"/api/v1/operators/{operator_id}/admission/review",
+            json={"action": "APPROVE", **_REVIEWER},
+        )
+        for body in (
+            {
+                "evidence_type": "OPERATING_AUTHORITY",
+                "reference_number": "AOC-1",
+                "issuing_authority": "IAA",
+                "jurisdiction": "IE",
+                "expiry_date": _eligibility_expiry(),
+            },
+            {
+                "evidence_type": "INSURANCE",
+                "insurer_name": "Acme",
+                "reference_number": "POL-1",
+                "expiry_date": _eligibility_expiry(),
+            },
+        ):
+            evidence = client.post(f"/api/v1/operators/{operator_id}/evidence", json=body).json()
+            client.post(
+                f"/api/v1/evidence/{evidence['id']}/review",
+                json={"action": "VERIFY", **_REVIEWER},
+            )
+    if (
+        client.get(
+            f"/api/v1/operators/{operator_id}/aircraft/{aircraft_id}/authorization"
+        ).status_code
+        != 200
+    ):
+        client.post(
+            f"/api/v1/operators/{operator_id}/aircraft/{aircraft_id}/authorization",
+            json={"authority_basis": "OWNED"},
+        )
+        client.post(f"/api/v1/operators/{operator_id}/aircraft/{aircraft_id}/authorization/submit")
+        client.post(
+            f"/api/v1/operators/{operator_id}/aircraft/{aircraft_id}/authorization/review",
+            json={"action": "APPROVE", **_REVIEWER},
+        )
 
 
 def submitted_trip(
