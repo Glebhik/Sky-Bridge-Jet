@@ -1,0 +1,267 @@
+"""Declarative authorization-policy registry for every registered route/method.
+
+This is the single, explicit inventory of *how every route is authorized*. It exists
+so a route can never become accessible merely because someone forgot to secure it: an
+automated coverage test (``tests/test_route_policy_coverage.py``) compares this
+registry against the live FastAPI route graph and fails on any unclassified, omitted,
+duplicated, or unsafely-public route.
+
+Dispositions carry intent, not enforcement — enforcement lives in the routers/seam.
+Pending dispositions mark work owned by an explicitly named later PR; a pending route
+is still protected by the global authentication gate (never anonymous).
+
+Canonical route set (documented normalization): the 76 OpenAPI operations plus the 4
+documentation/schema routes (`/docs`, `/docs/oauth2-redirect`, `/redoc`,
+`/openapi.json`) that Starlette serves outside the OpenAPI schema = 80 entries.
+HEAD/OPTIONS are ignored (auto-provided by Starlette).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import StrEnum
+
+
+class Disposition(StrEnum):
+    PUBLIC = "PUBLIC"
+    # Authenticated and already bound to the correct actor/scope (Phase 8 or self).
+    ALREADY_BOUND = "ALREADY_BOUND"
+    # Bound to customer-chain resource authorization in this PR (Phase 9.0.A-1).
+    PHASE_9_0A_1_BOUND = "PHASE_9_0A_1_BOUND"
+    # Operator-chain authorization, owned by the next PR.
+    PHASE_9_0A_2_PENDING = "PHASE_9_0A_2_PENDING"
+    # Payment operational authorization (payment.operate), owned by 9.0.A-3.
+    PHASE_9_0A_3_PENDING = "PHASE_9_0A_3_PENDING"
+
+
+@dataclass(frozen=True)
+class RoutePolicy:
+    method: str
+    path: str
+    disposition: Disposition
+    actor: str
+    note: str = ""
+
+
+def _p(method: str, path: str, disp: Disposition, actor: str, note: str = "") -> RoutePolicy:
+    return RoutePolicy(method=method, path=path, disposition=disp, actor=actor, note=note)
+
+
+_PUB = Disposition.PUBLIC
+_AB = Disposition.ALREADY_BOUND
+_P1 = Disposition.PHASE_9_0A_1_BOUND
+_P2 = Disposition.PHASE_9_0A_2_PENDING
+_P3 = Disposition.PHASE_9_0A_3_PENDING
+
+ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
+    # ---- Platform / documentation / discovery (public) --------------------
+    _p("GET", "/api/v1", _PUB, "anonymous", "versioned namespace root"),
+    _p("GET", "/health", _PUB, "anonymous"),
+    _p("GET", "/ready", _PUB, "anonymous"),
+    _p("GET", "/docs", _PUB, "anonymous", "swagger UI (B4: disable/protect in prod)"),
+    _p("GET", "/docs/oauth2-redirect", _PUB, "anonymous"),
+    _p("GET", "/redoc", _PUB, "anonymous"),
+    _p("GET", "/openapi.json", _PUB, "anonymous"),
+    _p("GET", "/api/v1/airports", _PUB, "anonymous", "public airport discovery"),
+    _p("GET", "/api/v1/airports/{airport_id}", _PUB, "anonymous"),
+    # ---- Authentication (public initiation/recovery) ----------------------
+    _p("POST", "/api/v1/auth/register", _PUB, "anonymous"),
+    _p("POST", "/api/v1/auth/login", _PUB, "anonymous"),
+    _p("POST", "/api/v1/auth/verify-email", _PUB, "anonymous"),
+    _p("POST", "/api/v1/auth/password-reset", _PUB, "anonymous"),
+    _p("POST", "/api/v1/auth/password-reset/confirm", _PUB, "anonymous"),
+    _p("POST", "/api/v1/webhooks/stripe", _PUB, "provider", "signature-authenticated"),
+    # ---- Authenticated self / Phase 8 bound -------------------------------
+    _p("GET", "/api/v1/auth/me", _AB, "self"),
+    _p("POST", "/api/v1/auth/logout", _AB, "self"),
+    _p("POST", "/api/v1/auth/logout-all", _AB, "self"),
+    _p("POST", "/api/v1/auth/invitations/accept", _AB, "invited-self"),
+    _p("POST", "/api/v1/organizations", _AB, "platform-admin"),
+    _p("POST", "/api/v1/organizations/{organization_id}/invitations", _AB, "org-admin"),
+    _p("GET", "/api/v1/organizations/{organization_id}/members", _AB, "org-admin"),
+    _p(
+        "POST",
+        "/api/v1/organizations/{organization_id}/members/{membership_id}/role",
+        _AB,
+        "org-admin",
+    ),
+    _p(
+        "DELETE",
+        "/api/v1/organizations/{organization_id}/members/{membership_id}",
+        _AB,
+        "org-admin",
+    ),
+    _p("POST", "/api/v1/admin/users/{user_id}/status", _AB, "platform-admin"),
+    _p("POST", "/api/v1/operators/{operator_id}/admission/review", _AB, "platform-reviewer"),
+    _p("POST", "/api/v1/evidence/{evidence_id}/review", _AB, "platform-reviewer"),
+    _p(
+        "POST",
+        "/api/v1/operators/{operator_id}/aircraft/{aircraft_id}/authorization/review",
+        _AB,
+        "platform-reviewer",
+    ),
+    _p(
+        "GET", "/api/v1/operators/{operator_id}/financial-account", _AB, "operator/platform-finance"
+    ),
+    _p(
+        "POST",
+        "/api/v1/operators/{operator_id}/financial-account",
+        _AB,
+        "operator/platform-finance",
+    ),
+    _p(
+        "POST",
+        "/api/v1/operators/{operator_id}/financial-account/onboarding-link",
+        _AB,
+        "operator/platform-finance",
+    ),
+    _p(
+        "POST",
+        "/api/v1/operators/{operator_id}/financial-account/synchronize",
+        _AB,
+        "operator/platform-finance",
+    ),
+    _p(
+        "GET",
+        "/api/v1/operators/{operator_id}/financial-eligibility",
+        _AB,
+        "operator/platform-finance",
+    ),
+    # ---- Customer chain — bound in THIS PR (Phase 9.0.A-1) -----------------
+    _p(
+        "POST",
+        "/api/v1/customers",
+        _P1,
+        "platform-admin",
+        "controlled until 9.0.B self-provisioning",
+    ),
+    _p("GET", "/api/v1/customers/{customer_id}", _P1, "customer/platform"),
+    _p("POST", "/api/v1/passengers", _P1, "customer/platform"),
+    _p("GET", "/api/v1/passengers/{passenger_id}", _P1, "customer/platform"),
+    _p("POST", "/api/v1/trip-requests", _P1, "customer/platform"),
+    _p("GET", "/api/v1/trip-requests/{trip_request_id}", _P1, "customer/platform"),
+    _p("POST", "/api/v1/trip-requests/{trip_request_id}/submit", _P1, "customer/platform"),
+    _p("POST", "/api/v1/trip-requests/{trip_request_id}/cancel", _P1, "customer/platform"),
+    _p("GET", "/api/v1/trip-requests/{trip_request_id}/offers", _P1, "platform (customer→9.0.B)"),
+    _p(
+        "POST",
+        "/api/v1/trip-requests/{trip_request_id}/offers/{offer_id}/select",
+        _P1,
+        "customer/platform",
+    ),
+    _p("POST", "/api/v1/bookings", _P1, "customer/platform"),
+    _p("GET", "/api/v1/bookings/{booking_id}", _P1, "platform (customer→9.0.B)"),
+    _p("GET", "/api/v1/trip-requests/{trip_request_id}/booking", _P1, "platform (customer→9.0.B)"),
+    _p("POST", "/api/v1/bookings/{booking_id}/cancel", _P1, "customer/platform (operator→9.0.A-2)"),
+    _p("GET", "/api/v1/bookings/{booking_id}/payment", _P1, "platform (customer→9.0.B)"),
+    _p("GET", "/api/v1/payments/{payment_id}", _P1, "platform (customer→9.0.B)"),
+    # ---- Operator chain — pending Phase 9.0.A-2 ---------------------------
+    _p("POST", "/api/v1/operators", _P2, "platform-admin", "B2 controlled onboarding"),
+    _p("GET", "/api/v1/operators/{operator_id}", _P2, "operator/platform"),
+    _p("POST", "/api/v1/aircraft", _P2, "operator"),
+    _p("GET", "/api/v1/aircraft/{aircraft_id}", _P2, "operator/platform"),
+    _p("POST", "/api/v1/offers", _P2, "operator"),
+    _p("GET", "/api/v1/offers/{offer_id}", _P2, "operator/platform"),
+    _p("PATCH", "/api/v1/offers/{offer_id}", _P2, "operator"),
+    _p("POST", "/api/v1/offers/{offer_id}/submit", _P2, "operator"),
+    _p("POST", "/api/v1/offers/{offer_id}/withdraw", _P2, "operator"),
+    _p("POST", "/api/v1/bookings/{booking_id}/confirm", _P2, "operator"),
+    _p("POST", "/api/v1/bookings/{booking_id}/reject", _P2, "operator"),
+    _p("GET", "/api/v1/operators/{operator_id}/admission", _P2, "operator/platform"),
+    _p("POST", "/api/v1/operators/{operator_id}/admission", _P2, "operator"),
+    _p("POST", "/api/v1/operators/{operator_id}/admission/submit", _P2, "operator"),
+    _p("GET", "/api/v1/operators/{operator_id}/admission/audit-events", _P2, "operator/platform"),
+    _p("GET", "/api/v1/operators/{operator_id}/evidence", _P2, "operator/platform"),
+    _p("POST", "/api/v1/operators/{operator_id}/evidence", _P2, "operator"),
+    _p("GET", "/api/v1/evidence/{evidence_id}", _P2, "operator/platform"),
+    _p("GET", "/api/v1/evidence/{evidence_id}/audit-events", _P2, "operator/platform"),
+    _p(
+        "GET",
+        "/api/v1/operators/{operator_id}/aircraft/{aircraft_id}/authorization",
+        _P2,
+        "operator/platform",
+    ),
+    _p(
+        "POST",
+        "/api/v1/operators/{operator_id}/aircraft/{aircraft_id}/authorization",
+        _P2,
+        "operator",
+    ),
+    _p(
+        "POST",
+        "/api/v1/operators/{operator_id}/aircraft/{aircraft_id}/authorization/submit",
+        _P2,
+        "operator",
+    ),
+    _p(
+        "GET",
+        "/api/v1/operators/{operator_id}/aircraft/{aircraft_id}/eligibility",
+        _P2,
+        "operator/platform",
+    ),
+    _p("GET", "/api/v1/operators/{operator_id}/eligibility", _P2, "operator/platform"),
+    # ---- Payment operations — pending Phase 9.0.A-3 ----------------------
+    _p("POST", "/api/v1/bookings/{booking_id}/payment", _P3, "internal/trusted", "B3 not customer"),
+    _p("GET", "/api/v1/payments/{payment_id}/allocation", _P3, "operator/platform (confidential)"),
+    _p("GET", "/api/v1/payments/{payment_id}/refunds", _P3, "operator/platform"),
+    _p("POST", "/api/v1/payments/{payment_id}/authorize", _P3, "platform-finance/admin"),
+    _p("POST", "/api/v1/payments/{payment_id}/capture", _P3, "platform-finance/admin"),
+    _p("POST", "/api/v1/payments/{payment_id}/void", _P3, "platform-finance/admin"),
+    _p(
+        "POST",
+        "/api/v1/payments/{payment_id}/refunds",
+        _AB,
+        "platform-finance/admin",
+        "payment.refund (Phase 8)",
+    ),
+)
+
+
+def policy_index() -> dict[tuple[str, str], RoutePolicy]:
+    """Return a (method, path) → policy map, raising on duplicate/contradictory keys."""
+    index: dict[tuple[str, str], RoutePolicy] = {}
+    for policy in ROUTE_POLICIES:
+        key = (policy.method, policy.path)
+        if key in index:
+            raise ValueError(f"Duplicate route policy for {key}")
+        index[key] = policy
+    return index
+
+
+_HTTP_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE"})
+# Documentation/schema routes are served by Starlette outside the OpenAPI schema.
+DOCUMENTATION_ROUTES: tuple[str, ...] = (
+    "/docs",
+    "/docs/oauth2-redirect",
+    "/redoc",
+    "/openapi.json",
+)
+
+
+def enumerate_app_routes(app: object) -> set[tuple[str, str]]:
+    """Canonical (method, path) set of every registered route on the live app.
+
+    Normalization: the OpenAPI operations (business + health/ready/root) union the
+    four documentation routes; HEAD/OPTIONS are excluded (Starlette auto-provides
+    them). This is the authoritative graph the registry must fully cover.
+    """
+    from fastapi import FastAPI
+
+    if not isinstance(app, FastAPI):
+        raise TypeError("Expected a FastAPI application")
+    routes: set[tuple[str, str]] = set()
+    for path, operations in app.openapi()["paths"].items():
+        for method in operations:
+            upper = method.upper()
+            if upper in _HTTP_METHODS:
+                routes.add((upper, path))
+    for path in DOCUMENTATION_ROUTES:
+        routes.add(("GET", path))
+    return routes
+
+
+def coverage_report(app: object) -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
+    """Return (registered-but-unclassified, classified-but-not-registered)."""
+    registered = enumerate_app_routes(app)
+    classified = set(policy_index().keys())
+    return registered - classified, classified - registered

@@ -8,8 +8,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from sky_bridge_jet.db.session import get_db
+from sky_bridge_jet.modules import access
 from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
-from sky_bridge_jet.modules.iam.dependencies import require_permission
+from sky_bridge_jet.modules.iam.dependencies import CurrentPrincipal, require_permission
 from sky_bridge_jet.modules.iam.domain import Permission
 from sky_bridge_jet.modules.payments.domain import PaymentConflictError
 from sky_bridge_jet.modules.payments.models import Payment, PaymentOperation
@@ -136,20 +137,31 @@ def create_payment(booking_id: UUID, session: DatabaseSession) -> PaymentRespons
 @router.get(
     "/bookings/{booking_id}/payment",
     response_model=PaymentResponse,
-    responses={404: _ERR},
+    responses={403: _ERR, 404: _ERR},
     operation_id="getBookingPayment",
 )
-def get_booking_payment(booking_id: UUID, session: DatabaseSession) -> PaymentResponse:
+def get_booking_payment(
+    booking_id: UUID, principal: CurrentPrincipal, session: DatabaseSession
+) -> PaymentResponse:
+    # PaymentResponse exposes platform_fee_minor / operator_amount_minor; the
+    # customer-safe payment-status projection is Phase 9.0.B. Platform viewers get the
+    # full response; ownership (payment→booking→trip→customer) is enforced.
+    owner = access.owner_of_booking(session, booking_id)
+    access.require_confidential_read(principal, Permission.PAYMENT_READ, owner)
     return _payment(PaymentService(session).get_for_booking(booking_id))
 
 
 @router.get(
     "/payments/{payment_id}",
     response_model=PaymentResponse,
-    responses={404: _ERR},
+    responses={403: _ERR, 404: _ERR},
     operation_id="getPayment",
 )
-def get_payment(payment_id: UUID, session: DatabaseSession) -> PaymentResponse:
+def get_payment(
+    payment_id: UUID, principal: CurrentPrincipal, session: DatabaseSession
+) -> PaymentResponse:
+    owner = access.owner_of_payment(session, payment_id)
+    access.require_confidential_read(principal, Permission.PAYMENT_READ, owner)
     return _payment(PaymentService(session).get(payment_id))
 
 

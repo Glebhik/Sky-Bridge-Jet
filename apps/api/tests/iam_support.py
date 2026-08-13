@@ -11,6 +11,8 @@ module is importable as ``import iam_support`` from any test package.
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import Request
@@ -39,14 +41,18 @@ def new_client() -> TestClient:
 
 
 def integration_client() -> TestClient:
-    """The default suite client.
+    """The default suite client for the legacy Phase 2–7 business suites.
 
-    Under RUN_DATABASE_INTEGRATION it is an authenticated platform-admin client so
-    the Phase 2–7 suites exercise real routes through the enforced gate. Without the
-    DB it is a plain client (only public/OpenAPI tests run, DB tests skip).
+    Under RUN_DATABASE_INTEGRATION it is an authenticated PRODUCT_OWNER — the single
+    documented, audited platform actor that holds every permission and, being a
+    PLATFORM organization, exercises the platform exception for customer-chain writes
+    (Phase 9.0.A-1). This lets pre-tenancy business tests keep building their
+    scenarios through the fully-enforced authorization gate without weakening it; the
+    dedicated cross-tenant isolation tests use properly scoped customer principals.
+    Without the DB it is a plain client (only public/OpenAPI tests run, DB tests skip).
     """
     if os.getenv("RUN_DATABASE_INTEGRATION") == "1":
-        return platform_admin_client()
+        return product_owner_client()
     return new_client()
 
 
@@ -176,6 +182,17 @@ def customer_owner_client(admin_client: TestClient, customer_id: UUID) -> tuple[
     return client, org_id
 
 
+def member_client_for_org(organization_id: UUID, role: OrganizationRole) -> TestClient:
+    """Register a fresh user and add them to an EXISTING organization in ``role``."""
+    client = new_client()
+    user_id = register_verify_login(client)
+    with SessionLocal() as session, session.begin():
+        session.add(
+            OrganizationMembership(user_id=user_id, organization_id=organization_id, role=role)
+        )
+    return client
+
+
 def operator_role_client(operator_id: UUID, role: OrganizationRole) -> tuple[TestClient, UUID]:
     """An operator-staff user bound to the given operator. Returns (client, org_id)."""
     client = new_client()
@@ -225,3 +242,141 @@ def override_admin_principal() -> None:
         request.state.principal = _UNIT_ADMIN_PRINCIPAL
 
     app.dependency_overrides[enforce_authentication] = _dep
+
+
+# --------------------------------------------------------------------------- #
+# Aviation scenario builders (driven by an authorized admin client)
+# --------------------------------------------------------------------------- #
+_REVIEWER = {"actor_type": "PLATFORM_REVIEWER"}
+
+
+def _future_iso(days: int = 30) -> str:
+    return (datetime.now(UTC) + timedelta(days=days)).isoformat()
+
+
+def make_operator_eligible(admin: TestClient, operator_id: str, aircraft_id: str) -> None:
+    """Admit an operator and authorize an aircraft using an admin (platform) client."""
+    if admin.get(f"/api/v1/operators/{operator_id}/admission").status_code != 200:
+        admin.post(f"/api/v1/operators/{operator_id}/admission")
+        admin.post(f"/api/v1/operators/{operator_id}/admission/submit")
+        admin.post(
+            f"/api/v1/operators/{operator_id}/admission/review",
+            json={"action": "APPROVE", **_REVIEWER},
+        )
+        expiry = (datetime.now(UTC) + timedelta(days=365)).isoformat()
+        for body in (
+            {
+                "evidence_type": "OPERATING_AUTHORITY",
+                "reference_number": "AOC-1",
+                "issuing_authority": "IAA",
+                "jurisdiction": "IE",
+                "expiry_date": expiry,
+            },
+            {
+                "evidence_type": "INSURANCE",
+                "insurer_name": "Acme",
+                "reference_number": "POL-1",
+                "expiry_date": expiry,
+            },
+        ):
+            evidence = admin.post(f"/api/v1/operators/{operator_id}/evidence", json=body).json()
+            admin.post(
+                f"/api/v1/evidence/{evidence['id']}/review",
+                json={"action": "VERIFY", **_REVIEWER},
+            )
+    if (
+        admin.get(
+            f"/api/v1/operators/{operator_id}/aircraft/{aircraft_id}/authorization"
+        ).status_code
+        != 200
+    ):
+        admin.post(
+            f"/api/v1/operators/{operator_id}/aircraft/{aircraft_id}/authorization",
+            json={"authority_basis": "OWNED"},
+        )
+        admin.post(f"/api/v1/operators/{operator_id}/aircraft/{aircraft_id}/authorization/submit")
+        admin.post(
+            f"/api/v1/operators/{operator_id}/aircraft/{aircraft_id}/authorization/review",
+            json={"action": "APPROVE", **_REVIEWER},
+        )
+
+
+def full_booking_scenario(
+    admin: TestClient, airports: list[dict[str, Any]], *, confirm: bool = True
+) -> dict[str, Any]:
+    """Build customer→operator→aircraft→trip→offer→select→booking→payment as admin.
+
+    Returns the created identifiers, including the ``customer_id`` so a caller can
+    bind a scoped CUSTOMER_OWNER principal to it for isolation tests.
+    """
+    customer_id = str(create_customer(admin))
+    operator = admin.post(
+        "/api/v1/operators",
+        json={
+            "legal_name": f"Scenario Air {uuid4().hex[:6]}",
+            "country_code": "IE",
+            "contact_email": f"ops-{uuid4().hex[:8]}@example.test",
+        },
+    ).json()
+    aircraft = admin.post(
+        "/api/v1/aircraft",
+        json={
+            "operator_id": operator["id"],
+            "manufacturer": "Cessna",
+            "model": "Citation CJ3+",
+            "category": "LIGHT_JET",
+            "registration": f"EI-{uuid4().hex[:6].upper()}",
+            "passenger_capacity": 7,
+        },
+    ).json()
+    make_operator_eligible(admin, operator["id"], aircraft["id"])
+    trip = admin.post(
+        "/api/v1/trip-requests",
+        json={
+            "customer_id": customer_id,
+            "legs": [
+                {
+                    "origin_airport_id": airports[0]["id"],
+                    "destination_airport_id": airports[1]["id"],
+                    "departure_at": "2026-12-01T14:00:00+00:00",
+                    "passenger_count": 2,
+                }
+            ],
+        },
+    ).json()
+    admin.post(
+        f"/api/v1/trip-requests/{trip['id']}/submit", json={"expected_version": trip["version"]}
+    )
+    offer = admin.post(
+        "/api/v1/offers",
+        json={
+            "trip_request_id": trip["id"],
+            "operator_id": operator["id"],
+            "aircraft_id": aircraft["id"],
+            "currency": "EUR",
+            "operator_amount_minor": 1_000_000,
+            "tax_amount_minor": 50_000,
+            "valid_until": _future_iso(),
+        },
+    ).json()
+    admin.post(f"/api/v1/offers/{offer['id']}/submit")
+    admin.post(f"/api/v1/trip-requests/{trip['id']}/offers/{offer['id']}/select")
+    booking = admin.post(
+        "/api/v1/bookings",
+        json={"trip_request_id": trip["id"], "operator_offer_id": offer["id"]},
+    ).json()
+    if confirm:
+        confirmed = admin.post(
+            f"/api/v1/bookings/{booking['id']}/confirm", json={"operator_id": operator["id"]}
+        )
+        assert confirmed.status_code == 200, confirmed.text
+        booking = confirmed.json()
+    payment = admin.post(f"/api/v1/bookings/{booking['id']}/payment").json()
+    return {
+        "customer_id": customer_id,
+        "operator_id": operator["id"],
+        "trip_id": trip["id"],
+        "offer_id": offer["id"],
+        "booking_id": booking["id"],
+        "payment_id": payment["id"],
+    }

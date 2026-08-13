@@ -1,0 +1,253 @@
+"""Phase 9.0.A-1 — customer-chain resource authorization (DB-backed).
+
+Proves cross-customer isolation, body-owner protection, active-organization
+validation, the 401/403/404 policy, and that confidential offer/booking/payment
+reads are not served to ordinary customers (deferred to the 9.0.B safe projection).
+"""
+
+from __future__ import annotations
+
+import os
+
+import iam_support
+import pytest
+from fastapi.testclient import TestClient
+
+requires_db = pytest.mark.skipif(
+    os.getenv("RUN_DATABASE_INTEGRATION") != "1",
+    reason="set RUN_DATABASE_INTEGRATION=1 with PostgreSQL available",
+)
+
+_PASSENGER = {"first_name": "Ada", "last_name": "Byron"}
+
+
+def _passenger_body(customer_id: str) -> dict:
+    return {"customer_id": customer_id, **_PASSENGER}
+
+
+def _trip_body(customer_id: str, airports: list) -> dict:
+    return {
+        "customer_id": customer_id,
+        "legs": [
+            {
+                "origin_airport_id": airports[0]["id"],
+                "destination_airport_id": airports[1]["id"],
+                "departure_at": "2026-12-01T14:00:00+00:00",
+                "passenger_count": 1,
+            }
+        ],
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Unauthenticated / permission basics
+# --------------------------------------------------------------------------- #
+@requires_db
+def test_anonymous_is_rejected(admin: TestClient) -> None:
+    anon = iam_support.new_client()
+    customer_id = str(iam_support.create_customer(admin))
+    assert anon.get(f"/api/v1/customers/{customer_id}").status_code == 401
+    assert anon.post("/api/v1/passengers", json=_passenger_body(customer_id)).status_code == 401
+
+
+@requires_db
+def test_customer_can_create_and_read_own_resources(admin: TestClient, airports: list) -> None:
+    customer_id = str(iam_support.create_customer(admin))
+    client, _ = iam_support.customer_owner_client(admin, __import__("uuid").UUID(customer_id))
+
+    # Passenger create derives the customer from the principal (body echoes it).
+    created = client.post("/api/v1/passengers", json=_passenger_body(customer_id))
+    assert created.status_code == 201, created.text
+    passenger_id = created.json()["id"]
+    assert created.json()["customer_id"] == customer_id
+    assert client.get(f"/api/v1/passengers/{passenger_id}").status_code == 200
+    assert client.get(f"/api/v1/customers/{customer_id}").status_code == 200
+
+    # Trip create + lifecycle.
+    trip = client.post("/api/v1/trip-requests", json=_trip_body(customer_id, airports))
+    assert trip.status_code == 201, trip.text
+    trip_id = trip.json()["id"]
+    assert client.get(f"/api/v1/trip-requests/{trip_id}").status_code == 200
+    submitted = client.post(
+        f"/api/v1/trip-requests/{trip_id}/submit",
+        json={"expected_version": trip.json()["version"]},
+    )
+    assert submitted.status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# Cross-customer isolation (A must never touch B)
+# --------------------------------------------------------------------------- #
+@requires_db
+def test_customer_a_cannot_access_customer_b(admin: TestClient, airports: list) -> None:
+    import uuid
+
+    a_id = iam_support.create_customer(admin)
+    b_id = iam_support.create_customer(admin)
+    a_client, _ = iam_support.customer_owner_client(admin, a_id)
+    b_client, _ = iam_support.customer_owner_client(admin, b_id)
+
+    # B creates a passenger and a trip.
+    b_passenger = b_client.post("/api/v1/passengers", json=_passenger_body(str(b_id))).json()["id"]
+    b_trip = b_client.post("/api/v1/trip-requests", json=_trip_body(str(b_id), airports)).json()[
+        "id"
+    ]
+
+    # A cannot read B's customer/passenger/trip — existence concealed as 404.
+    assert a_client.get(f"/api/v1/customers/{b_id}").status_code == 404
+    assert a_client.get(f"/api/v1/passengers/{b_passenger}").status_code == 404
+    assert a_client.get(f"/api/v1/trip-requests/{b_trip}").status_code == 404
+    # A cannot submit/cancel B's trip.
+    assert (
+        a_client.post(
+            f"/api/v1/trip-requests/{b_trip}/submit", json={"expected_version": 1}
+        ).status_code
+        == 404
+    )
+    # A random/nonexistent id is also 404 (no enumeration signal difference).
+    assert a_client.get(f"/api/v1/trip-requests/{uuid.uuid4()}").status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# Body-supplied owner-id protection
+# --------------------------------------------------------------------------- #
+@requires_db
+def test_body_customer_id_cannot_transfer_ownership(admin: TestClient, airports: list) -> None:
+    a_id = iam_support.create_customer(admin)
+    b_id = iam_support.create_customer(admin)
+    a_client, _ = iam_support.customer_owner_client(admin, a_id)
+
+    # A supplies B's customer_id in the body → concealed 404, no passenger for B.
+    assert a_client.post("/api/v1/passengers", json=_passenger_body(str(b_id))).status_code == 404
+    assert (
+        a_client.post("/api/v1/trip-requests", json=_trip_body(str(b_id), airports)).status_code
+        == 404
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Active-organization context
+# --------------------------------------------------------------------------- #
+@requires_db
+def test_single_customer_membership_auto_resolves(admin: TestClient) -> None:
+    customer_id = iam_support.create_customer(admin)
+    client, _ = iam_support.customer_owner_client(admin, customer_id)
+    # No X-Organization-Id header needed.
+    assert (
+        client.post("/api/v1/passengers", json=_passenger_body(str(customer_id))).status_code == 201
+    )
+
+
+@requires_db
+def test_multiple_customer_memberships_require_explicit_org(admin: TestClient) -> None:
+    import uuid
+
+    from sky_bridge_jet.db.session import SessionLocal
+    from sky_bridge_jet.modules.iam.domain import OrganizationRole, OrganizationType
+    from sky_bridge_jet.modules.iam.models import Organization, OrganizationMembership
+
+    a_id = iam_support.create_customer(admin)
+    b_id = iam_support.create_customer(admin)
+    client = iam_support.new_client()
+    user_id = iam_support.register_verify_login(client)
+
+    org_ids: dict[uuid.UUID, uuid.UUID] = {}
+    with SessionLocal() as session, session.begin():
+        for cid in (a_id, b_id):
+            org = Organization(
+                organization_type=OrganizationType.CUSTOMER,
+                display_name="Multi",
+                customer_id=cid,
+            )
+            session.add(org)
+            session.flush()
+            session.add(
+                OrganizationMembership(
+                    user_id=user_id,
+                    organization_id=org.id,
+                    role=OrganizationRole.CUSTOMER_OWNER,
+                )
+            )
+            org_ids[cid] = org.id
+
+    # Ambiguous without a header → 403.
+    assert client.post("/api/v1/passengers", json=_passenger_body(str(a_id))).status_code == 403
+    # Explicit valid org for A → creates under A.
+    ok = client.post(
+        "/api/v1/passengers",
+        json=_passenger_body(str(a_id)),
+        headers={"X-Organization-Id": str(org_ids[a_id])},
+    )
+    assert ok.status_code == 201
+    assert ok.json()["customer_id"] == str(a_id)
+    # A foreign organization id (not a membership) → rejected.
+    assert (
+        client.post(
+            "/api/v1/passengers",
+            json=_passenger_body(str(a_id)),
+            headers={"X-Organization-Id": str(uuid.uuid4())},
+        ).status_code
+        == 403
+    )
+
+
+@requires_db
+def test_operator_organization_cannot_be_customer_context(admin: TestClient) -> None:
+    from sky_bridge_jet.modules.iam.domain import OrganizationRole
+
+    operator_id = iam_support.create_operator(admin)
+    op_client, _ = iam_support.operator_role_client(operator_id, OrganizationRole.OPERATOR_ADMIN)
+    customer_id = str(iam_support.create_customer(admin))
+    # An operator principal has no customer context → cannot create a passenger.
+    assert (
+        op_client.post("/api/v1/passengers", json=_passenger_body(customer_id)).status_code == 403
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Confidential reads (offers / bookings / payments)
+# --------------------------------------------------------------------------- #
+@requires_db
+def test_confidential_reads_are_denied_to_customers_until_projection(
+    admin: TestClient, airports: list
+) -> None:
+    import uuid
+
+    scenario = iam_support.full_booking_scenario(admin, airports)
+    customer_id = uuid.UUID(scenario["customer_id"])
+    customer_client, _ = iam_support.customer_owner_client(admin, customer_id)
+    trip_id = scenario["trip_id"]
+    booking_id = scenario["booking_id"]
+    payment_id = scenario["payment_id"]
+
+    # Platform (admin/product owner) receives the full response.
+    assert admin.get(f"/api/v1/trip-requests/{trip_id}/offers").status_code == 200
+    assert admin.get(f"/api/v1/bookings/{booking_id}").status_code == 200
+    assert admin.get(f"/api/v1/payments/{payment_id}").status_code == 200
+
+    # The owning customer is temporarily denied (403) — no safe projection yet (9.0.B).
+    assert customer_client.get(f"/api/v1/trip-requests/{trip_id}/offers").status_code == 403
+    assert customer_client.get(f"/api/v1/bookings/{booking_id}").status_code == 403
+    assert customer_client.get(f"/api/v1/payments/{payment_id}").status_code == 403
+    assert customer_client.get(f"/api/v1/bookings/{booking_id}/payment").status_code == 403
+
+    # A different customer cannot even learn these exist → 404.
+    other_client, _ = iam_support.customer_owner_client(admin, iam_support.create_customer(admin))
+    assert other_client.get(f"/api/v1/bookings/{booking_id}").status_code == 404
+    assert other_client.get(f"/api/v1/payments/{payment_id}").status_code == 404
+    assert other_client.get(f"/api/v1/trip-requests/{trip_id}/offers").status_code == 404
+
+
+@requires_db
+def test_full_responses_never_reach_a_customer_principal(admin: TestClient, airports: list) -> None:
+    """The customer never receives a body containing confidential fields."""
+    import uuid
+
+    scenario = iam_support.full_booking_scenario(admin, airports)
+    customer_client, _ = iam_support.customer_owner_client(
+        admin, uuid.UUID(scenario["customer_id"])
+    )
+    response = customer_client.get(f"/api/v1/payments/{scenario['payment_id']}")
+    assert response.status_code == 403
+    assert "platform_fee_minor" not in response.text
+    assert "operator_amount_minor" not in response.text
