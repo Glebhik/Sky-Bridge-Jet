@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -38,6 +39,10 @@ def _not_found(resource_name: str) -> ResourceNotFoundError:
     return ResourceNotFoundError(f"{resource_name} was not found")
 
 
+# Optional audit hook run inside the command transaction (Phase 9.0.A-1).
+OnCommit = Callable[[Session], None] | None
+
+
 class BookingService:
     """Own booking-workflow use cases within one explicit transaction per write.
 
@@ -56,7 +61,7 @@ class BookingService:
 
     # -- Customer / platform action -----------------------------------------
 
-    def create(self, data: BookingCreate) -> Booking:
+    def create(self, data: BookingCreate, *, on_commit: OnCommit = None) -> Booking:
         with self.session.begin():
             # Lock the trip row so concurrent creations for the same trip
             # serialize; the partial unique index is the ultimate backstop.
@@ -109,6 +114,8 @@ class BookingService:
                 )
             )
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return booking
 
     # -- Operator actions ---------------------------------------------------
@@ -167,7 +174,9 @@ class BookingService:
 
     # -- Cancellation (customer / operator / platform) ----------------------
 
-    def cancel(self, booking_id: UUID, data: BookingCancel) -> Booking:
+    def cancel(
+        self, booking_id: UUID, data: BookingCancel, *, on_commit: OnCommit = None
+    ) -> Booking:
         with self.session.begin():
             booking = self.bookings.get_for_update(booking_id)
             if booking is None:
@@ -180,6 +189,8 @@ class BookingService:
             booking.cancellation_reason = data.reason
             booking.cancellation_note = data.note
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return booking
 
     # -- Reads --------------------------------------------------------------

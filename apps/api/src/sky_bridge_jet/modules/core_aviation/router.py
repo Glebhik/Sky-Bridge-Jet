@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from sky_bridge_jet.db.session import get_db
+from sky_bridge_jet.modules import access
 from sky_bridge_jet.modules.core_aviation.domain import (
     ConcurrencyConflictError,
     DomainValidationError,
@@ -43,10 +44,20 @@ from sky_bridge_jet.modules.core_aviation.services import (
     OperatorService,
     TripRequestService,
 )
+from sky_bridge_jet.modules.iam.dependencies import (
+    ActiveOrganization,
+    CurrentPrincipal,
+    require_permission,
+)
+from sky_bridge_jet.modules.iam.domain import Permission
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["core-aviation"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
+
+# Phase 9.0.A-1: creating an arbitrary Customer is a controlled platform action
+# until Phase 9.0.B introduces verified customer self-provisioning.
+_REQUIRE_CUSTOMER_ADMIN = require_permission(Permission.ADMIN_ORGANIZATIONS_MANAGE)
 
 
 def _route_operation(request: Request) -> str:
@@ -221,43 +232,123 @@ def _trip_response(trip: TripRequest) -> TripRequestResponse:
 @router.post(
     "/customers",
     response_model=CustomerResponse,
-    responses={409: {"model": ErrorResponse}},
+    responses={403: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
     status_code=status.HTTP_201_CREATED,
     operation_id="createCustomer",
+    dependencies=[_REQUIRE_CUSTOMER_ADMIN],
 )
-def create_customer(data: CustomerCreate, session: DatabaseSession) -> CustomerResponse:
-    return CustomerResponse.model_validate(CustomerService(session).create(data))
+def create_customer(
+    data: CustomerCreate,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> CustomerResponse:
+    # Platform-controlled creation (gated above); audited atomically with the insert.
+    hook = access.platform_admin_hook(
+        principal,
+        permission=Permission.ADMIN_ORGANIZATIONS_MANAGE,
+        action="createCustomer",
+        resource_type="customer",
+        resource_reference="new",
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+    return CustomerResponse.model_validate(CustomerService(session).create(data, on_commit=hook))
 
 
 @router.get(
     "/customers/{customer_id}",
     response_model=CustomerResponse,
-    responses={404: {"model": ErrorResponse}},
+    responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
     operation_id="getCustomer",
 )
-def get_customer(customer_id: UUID, session: DatabaseSession) -> CustomerResponse:
-    return CustomerResponse.model_validate(CustomerService(session).get(customer_id))
+def get_customer(
+    customer_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> CustomerResponse:
+    customer = CustomerService(session).get(customer_id)  # 404 if absent
+    access.require_customer_access(principal, Permission.CUSTOMER_READ, customer.id)
+    response = CustomerResponse.model_validate(customer)
+    access.audit_platform_read(
+        session,
+        principal,
+        permission=Permission.CUSTOMER_READ,
+        action="getCustomer",
+        resource_type="customer",
+        resource_reference=customer.id,
+        owner_customer_id=customer.id,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+    return response
 
 
 @router.post(
     "/passengers",
     response_model=PassengerResponse,
-    responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
     status_code=status.HTTP_201_CREATED,
     operation_id="createPassenger",
 )
-def create_passenger(data: PassengerCreate, session: DatabaseSession) -> PassengerResponse:
-    return PassengerResponse.model_validate(CustomerService(session).create_passenger(data))
+def create_passenger(
+    data: PassengerCreate,
+    request: Request,
+    principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
+    session: DatabaseSession,
+) -> PassengerResponse:
+    owner = access.resolve_write_customer(
+        session,
+        principal,
+        body_customer_id=data.customer_id,
+        requested_organization_id=active_organization,
+    )
+    session.rollback()  # release the ownership read before the service's write txn
+    scoped = data.model_copy(update={"customer_id": owner})
+    hook = access.platform_exception_hook(
+        principal,
+        permission=Permission.CUSTOMER_WRITE,
+        action="createPassenger",
+        resource_type="passenger",
+        resource_reference=owner,
+        owner_customer_id=owner,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+    return PassengerResponse.model_validate(
+        CustomerService(session).create_passenger(scoped, on_commit=hook)
+    )
 
 
 @router.get(
     "/passengers/{passenger_id}",
     response_model=PassengerResponse,
-    responses={404: {"model": ErrorResponse}},
+    responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
     operation_id="getPassenger",
 )
-def get_passenger(passenger_id: UUID, session: DatabaseSession) -> PassengerResponse:
-    return PassengerResponse.model_validate(CustomerService(session).get_passenger(passenger_id))
+def get_passenger(
+    passenger_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> PassengerResponse:
+    passenger = CustomerService(session).get_passenger(passenger_id)  # 404 if absent
+    access.require_customer_access(principal, Permission.CUSTOMER_READ, passenger.customer_id)
+    response = PassengerResponse.model_validate(passenger)
+    access.audit_platform_read(
+        session,
+        principal,
+        permission=Permission.CUSTOMER_READ,
+        action="getPassenger",
+        resource_type="passenger",
+        resource_reference=passenger.id,
+        owner_customer_id=passenger.customer_id,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+    return response
 
 
 @router.get(
@@ -330,34 +421,93 @@ def get_aircraft(aircraft_id: UUID, session: DatabaseSession) -> AircraftRespons
     status_code=status.HTTP_201_CREATED,
     operation_id="createDraftTripRequest",
 )
-def create_trip_request(data: TripRequestCreate, session: DatabaseSession) -> TripRequestResponse:
-    return _trip_response(TripRequestService(session).create(data))
+def create_trip_request(
+    data: TripRequestCreate,
+    request: Request,
+    principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
+    session: DatabaseSession,
+) -> TripRequestResponse:
+    owner = access.resolve_write_customer(
+        session,
+        principal,
+        body_customer_id=data.customer_id,
+        requested_organization_id=active_organization,
+    )
+    session.rollback()
+    scoped = data.model_copy(update={"customer_id": owner})
+    hook = access.platform_exception_hook(
+        principal,
+        permission=Permission.TRIP_WRITE,
+        action="createDraftTripRequest",
+        resource_type="trip_request",
+        resource_reference=owner,
+        owner_customer_id=owner,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+    return _trip_response(TripRequestService(session).create(scoped, on_commit=hook))
 
 
 @router.get(
     "/trip-requests/{trip_request_id}",
     response_model=TripRequestResponse,
-    responses={404: {"model": ErrorResponse}},
+    responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
     operation_id="getTripRequest",
 )
-def get_trip_request(trip_request_id: UUID, session: DatabaseSession) -> TripRequestResponse:
-    return _trip_response(TripRequestService(session).get(trip_request_id))
+def get_trip_request(
+    trip_request_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> TripRequestResponse:
+    trip = TripRequestService(session).get(trip_request_id)  # 404 if absent
+    access.require_customer_access(principal, Permission.TRIP_READ, trip.customer_id)
+    response = _trip_response(trip)
+    access.audit_platform_read(
+        session,
+        principal,
+        permission=Permission.TRIP_READ,
+        action="getTripRequest",
+        resource_type="trip_request",
+        resource_reference=trip.id,
+        owner_customer_id=trip.customer_id,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+    return response
 
 
 @router.post(
     "/trip-requests/{trip_request_id}/submit",
     response_model=TripRequestResponse,
-    responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
     operation_id="submitTripRequest",
 )
 def submit_trip_request(
     trip_request_id: UUID,
     command: VersionedTripCommand,
+    request: Request,
+    principal: CurrentPrincipal,
     session: DatabaseSession,
 ) -> TripRequestResponse:
+    owner = access.owner_of_trip(session, trip_request_id)
+    access.require_customer_access(principal, Permission.TRIP_WRITE, owner)
+    session.rollback()
+    hook = access.platform_exception_hook(
+        principal,
+        permission=Permission.TRIP_WRITE,
+        action="submitTripRequest",
+        resource_type="trip_request",
+        resource_reference=trip_request_id,
+        owner_customer_id=owner,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
     return _trip_response(
         TripRequestService(session).submit(
-            trip_request_id, expected_version=command.expected_version
+            trip_request_id, expected_version=command.expected_version, on_commit=hook
         )
     )
 
@@ -365,16 +515,34 @@ def submit_trip_request(
 @router.post(
     "/trip-requests/{trip_request_id}/cancel",
     response_model=TripRequestResponse,
-    responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
     operation_id="cancelTripRequest",
 )
 def cancel_trip_request(
     trip_request_id: UUID,
     command: VersionedTripCommand,
+    request: Request,
+    principal: CurrentPrincipal,
     session: DatabaseSession,
 ) -> TripRequestResponse:
+    owner = access.owner_of_trip(session, trip_request_id)
+    access.require_customer_access(principal, Permission.TRIP_WRITE, owner)
+    session.rollback()
+    hook = access.platform_exception_hook(
+        principal,
+        permission=Permission.TRIP_WRITE,
+        action="cancelTripRequest",
+        resource_type="trip_request",
+        resource_reference=trip_request_id,
+        owner_customer_id=owner,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
     return _trip_response(
         TripRequestService(session).cancel(
-            trip_request_id, expected_version=command.expected_version
+            trip_request_id, expected_version=command.expected_version, on_commit=hook
         )
     )

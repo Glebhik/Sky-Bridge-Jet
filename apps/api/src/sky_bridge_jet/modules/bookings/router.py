@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from sky_bridge_jet.db.session import get_db
+from sky_bridge_jet.modules import access
 from sky_bridge_jet.modules.bookings.domain import BookingConflictError
 from sky_bridge_jet.modules.bookings.schemas import (
     BookingCancel,
@@ -18,6 +19,8 @@ from sky_bridge_jet.modules.bookings.schemas import (
 )
 from sky_bridge_jet.modules.bookings.services import BookingService
 from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
+from sky_bridge_jet.modules.iam.dependencies import CurrentPrincipal
+from sky_bridge_jet.modules.iam.domain import Permission
 
 router = APIRouter(tags=["bookings"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -49,31 +52,87 @@ def register_booking_exception_handlers(app: object) -> None:
 @router.post(
     "/bookings",
     response_model=BookingResponse,
-    responses={404: _ERR, 409: _ERR},
+    responses={403: _ERR, 404: _ERR, 409: _ERR},
     status_code=status.HTTP_201_CREATED,
     operation_id="createBooking",
 )
-def create_booking(data: BookingCreate, session: DatabaseSession) -> BookingResponse:
-    return BookingResponse.model_validate(BookingService(session).create(data))
+def create_booking(
+    data: BookingCreate,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> BookingResponse:
+    # Ownership is derived from the referenced trip; owner ids are never trusted from
+    # the body. The service enforces the offer→trip relationship and lifecycle.
+    owner = access.owner_of_trip(session, data.trip_request_id)
+    access.require_customer_access(principal, Permission.TRIP_WRITE, owner)
+    session.rollback()
+    hook = access.platform_exception_hook(
+        principal,
+        permission=Permission.TRIP_WRITE,
+        action="createBooking",
+        resource_type="trip_request",
+        resource_reference=data.trip_request_id,
+        owner_customer_id=owner,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+    return BookingResponse.model_validate(BookingService(session).create(data, on_commit=hook))
 
 
 @router.get(
     "/bookings/{booking_id}",
     response_model=BookingResponse,
-    responses={404: _ERR},
+    responses={403: _ERR, 404: _ERR},
     operation_id="getBooking",
 )
-def get_booking(booking_id: UUID, session: DatabaseSession) -> BookingResponse:
+def get_booking(
+    booking_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> BookingResponse:
+    # BookingResponse exposes platform_fee_minor / operator_amount_minor; the
+    # customer-safe projection is Phase 9.0.B. Platform viewers get the full response;
+    # ownership is enforced for everyone (cross-tenant → 404).
+    owner = access.owner_of_booking(session, booking_id)
+    access.require_confidential_read(principal, Permission.BOOKING_READ, owner)
+    access.audit_platform_read(
+        session,
+        principal,
+        permission=Permission.BOOKING_READ,
+        action="getBooking",
+        resource_type="booking",
+        resource_reference=booking_id,
+        owner_customer_id=owner,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
     return BookingResponse.model_validate(BookingService(session).get(booking_id))
 
 
 @router.get(
     "/trip-requests/{trip_request_id}/booking",
     response_model=BookingResponse,
-    responses={404: _ERR},
+    responses={403: _ERR, 404: _ERR},
     operation_id="getTripRequestBooking",
 )
-def get_trip_booking(trip_request_id: UUID, session: DatabaseSession) -> BookingResponse:
+def get_trip_booking(
+    trip_request_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> BookingResponse:
+    owner = access.owner_of_trip(session, trip_request_id)
+    access.require_confidential_read(principal, Permission.BOOKING_READ, owner)
+    access.audit_platform_read(
+        session,
+        principal,
+        permission=Permission.BOOKING_READ,
+        action="getTripRequestBooking",
+        resource_type="trip_request",
+        resource_reference=trip_request_id,
+        owner_customer_id=owner,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
     return BookingResponse.model_validate(BookingService(session).get_for_trip(trip_request_id))
 
 
@@ -104,10 +163,30 @@ def reject_booking(
 @router.post(
     "/bookings/{booking_id}/cancel",
     response_model=BookingResponse,
-    responses={404: _ERR, 409: _ERR},
+    responses={403: _ERR, 404: _ERR, 409: _ERR},
     operation_id="cancelBooking",
 )
 def cancel_booking(
-    booking_id: UUID, data: BookingCancel, session: DatabaseSession
+    booking_id: UUID,
+    data: BookingCancel,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
 ) -> BookingResponse:
-    return BookingResponse.model_validate(BookingService(session).cancel(booking_id, data))
+    # Phase 9.0.A-1 secures the customer side (owner via booking→trip→customer) and
+    # the platform actor. Operator-initiated cancellation scoping is Phase 9.0.A-2.
+    owner = access.owner_of_booking(session, booking_id)
+    access.require_customer_access(principal, Permission.TRIP_WRITE, owner)
+    session.rollback()
+    hook = access.platform_exception_hook(
+        principal,
+        permission=Permission.TRIP_WRITE,
+        action="cancelBooking",
+        resource_type="booking",
+        resource_reference=booking_id,
+        owner_customer_id=owner,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+    return BookingResponse.model_validate(
+        BookingService(session).cancel(booking_id, data, on_commit=hook)
+    )

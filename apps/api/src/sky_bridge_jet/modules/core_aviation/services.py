@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -45,6 +46,12 @@ def _not_found(resource_name: str) -> ResourceNotFoundError:
     return ResourceNotFoundError(f"{resource_name} was not found")
 
 
+# Optional hook the router supplies to write an append-only audit record inside a
+# command's transaction (Phase 9.0.A-1 platform-exception auditing). A plain callable
+# keeps the domain services decoupled from the IAM/audit modules.
+OnCommit = Callable[[Session], None] | None
+
+
 class CustomerService:
     """Own customer and passenger use cases; repositories never commit independently."""
 
@@ -53,7 +60,7 @@ class CustomerService:
         self.customers = CustomerRepository(session)
         self.passengers = PassengerRepository(session)
 
-    def create(self, data: CustomerCreate) -> Customer:
+    def create(self, data: CustomerCreate, *, on_commit: OnCommit = None) -> Customer:
         with self.session.begin():
             customer = self.customers.add(
                 Customer(
@@ -67,6 +74,8 @@ class CustomerService:
                 )
             )
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return customer
 
     def get(self, customer_id: UUID) -> Customer:
@@ -75,7 +84,7 @@ class CustomerService:
             raise _not_found("Customer")
         return customer
 
-    def create_passenger(self, data: PassengerCreate) -> Passenger:
+    def create_passenger(self, data: PassengerCreate, *, on_commit: OnCommit = None) -> Passenger:
         with self.session.begin():
             if self.customers.get(data.customer_id) is None:
                 raise _not_found("Customer")
@@ -91,6 +100,8 @@ class CustomerService:
                 )
             )
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return passenger
 
     def get_passenger(self, passenger_id: UUID) -> Passenger:
@@ -174,7 +185,7 @@ class TripRequestService:
         self.airports = AirportRepository(session)
         self.trips = TripRequestRepository(session)
 
-    def create(self, data: TripRequestCreate) -> TripRequest:
+    def create(self, data: TripRequestCreate, *, on_commit: OnCommit = None) -> TripRequest:
         with self.session.begin():
             if self.customers.get(data.customer_id) is None:
                 raise _not_found("Customer")
@@ -227,6 +238,8 @@ class TripRequestService:
                     notes=data.requirements.pet.notes,
                 )
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return trip
 
     def get(self, trip_request_id: UUID) -> TripRequest:
@@ -235,18 +248,24 @@ class TripRequestService:
             raise _not_found("Trip request")
         return trip
 
-    def submit(self, trip_request_id: UUID, *, expected_version: int) -> TripRequest:
+    def submit(
+        self, trip_request_id: UUID, *, expected_version: int, on_commit: OnCommit = None
+    ) -> TripRequest:
         return self._transition(
             trip_request_id,
             expected_version=expected_version,
             target=TripRequestStatus.SUBMITTED,
+            on_commit=on_commit,
         )
 
-    def cancel(self, trip_request_id: UUID, *, expected_version: int) -> TripRequest:
+    def cancel(
+        self, trip_request_id: UUID, *, expected_version: int, on_commit: OnCommit = None
+    ) -> TripRequest:
         return self._transition(
             trip_request_id,
             expected_version=expected_version,
             target=TripRequestStatus.CANCELLED,
+            on_commit=on_commit,
         )
 
     def _transition(
@@ -255,6 +274,7 @@ class TripRequestService:
         *,
         expected_version: int,
         target: TripRequestStatus,
+        on_commit: OnCommit = None,
     ) -> TripRequest:
         try:
             with self.session.begin():
@@ -265,6 +285,8 @@ class TripRequestService:
                     )
                 trip.status = validate_trip_transition(trip.status, target)
                 self.session.flush()
+                if on_commit is not None:
+                    on_commit(self.session)
                 return trip
         except StaleDataError as error:
             raise ConcurrencyConflictError(
