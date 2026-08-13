@@ -1,13 +1,20 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from sky_bridge_jet.modules.bookings.router import router as bookings_router
 from sky_bridge_jet.modules.compliance.router import router as compliance_router
 from sky_bridge_jet.modules.core_aviation.router import router as core_aviation_router
 from sky_bridge_jet.modules.financials.router import router as financials_router
+from sky_bridge_jet.modules.iam.dependencies import enforce_authentication
+from sky_bridge_jet.modules.iam.router import router as iam_router
 from sky_bridge_jet.modules.offers.router import router as offers_router
 from sky_bridge_jet.modules.payments.router import router as payments_router
 
-api_v1_router = APIRouter(prefix="/api/v1")
+# The global authentication gate: applied to the whole versioned router so every
+# route is authenticated unless explicitly classified PUBLIC (fail closed). This is
+# a dependency (not middleware) so it shares the request session and honors test
+# ``dependency_overrides``.
+api_v1_router = APIRouter(prefix="/api/v1", dependencies=[Depends(enforce_authentication)])
+api_v1_router.include_router(iam_router)
 api_v1_router.include_router(core_aviation_router)
 api_v1_router.include_router(offers_router)
 api_v1_router.include_router(bookings_router)

@@ -1,6 +1,7 @@
 import logging
 from collections.abc import Generator
 
+import iam_support
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
@@ -57,6 +58,7 @@ def test_persistence_failure_logs_safe_metadata_without_customer_pii(monkeypatch
         )
 
     monkeypatch.setattr(CustomerService, "create", raise_persistence_error)
+    iam_support.override_admin_principal()
     caplog.set_level(logging.ERROR, logger="sky_bridge_jet.modules.core_aviation.router")
 
     with TestClient(app) as client:
@@ -107,6 +109,7 @@ def test_customer_endpoint_normalizes_email_and_returns_safe_validation_errors()
             yield session
 
     app.dependency_overrides[get_db] = override_db
+    iam_support.override_admin_principal()
     try:
         with TestClient(app) as client:
             created = client.post(
@@ -154,6 +157,7 @@ def test_customer_endpoint_rejects_blank_identity_fields() -> None:
             yield session
 
     app.dependency_overrides[get_db] = override_db
+    iam_support.override_admin_principal()
     try:
         with TestClient(app) as client:
             response = client.post(
@@ -190,6 +194,7 @@ def test_trip_endpoints_enforce_state_transition_rules() -> None:
             yield session
 
     app.dependency_overrides[get_db] = override_db
+    iam_support.override_admin_principal()
     try:
         with TestClient(app) as client:
             customer = client.post(
@@ -249,6 +254,7 @@ def test_operator_and_aircraft_endpoints_persist_relationships() -> None:
             yield session
 
     app.dependency_overrides[get_db] = override_db
+    iam_support.override_admin_principal()
     try:
         with TestClient(app) as client:
             operator = client.post(
@@ -293,6 +299,7 @@ def test_operator_endpoint_rejects_blank_trading_name() -> None:
             yield session
 
     app.dependency_overrides[get_db] = override_db
+    iam_support.override_admin_principal()
     try:
         with TestClient(app) as client:
             response = client.post(
@@ -328,6 +335,7 @@ def test_trip_endpoint_rejects_passengers_owned_by_another_customer() -> None:
             yield session
 
     app.dependency_overrides[get_db] = override_db
+    iam_support.override_admin_principal()
     try:
         with TestClient(app) as client:
             first_customer = client.post(

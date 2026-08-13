@@ -5,6 +5,9 @@ description = "Sky Bridge Jet modular monolith API foundation"
 requires-python = ">=3.12"
 dependencies = [
   "alembic==1.19.1",
+  # Argon2id password hashing. We never implement hashing/crypto ourselves; the
+  # library owns hashing, verification (constant-time), and rehash decisions.
+  "argon2-cffi==25.1.0",
   "fastapi==0.141.1",
   "psycopg[binary]==3.3.4",
   "pydantic-settings==2.15.0",
