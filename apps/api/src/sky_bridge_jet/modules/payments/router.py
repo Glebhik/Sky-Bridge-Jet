@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from sky_bridge_jet.db.session import get_db
 from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
+from sky_bridge_jet.modules.iam.dependencies import require_permission
+from sky_bridge_jet.modules.iam.domain import Permission
 from sky_bridge_jet.modules.payments.domain import PaymentConflictError
 from sky_bridge_jet.modules.payments.models import Payment, PaymentOperation
 from sky_bridge_jet.modules.payments.provider import (
@@ -30,6 +32,9 @@ router = APIRouter(tags=["payments"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
 _ERR = {"model": ErrorResponse}
+# Refunds are a high-consequence financial action bound to a platform finance/admin
+# principal (Phase 8): an arbitrary authenticated user cannot refund a payment.
+_REQUIRE_PAYMENT_REFUND = require_permission(Permission.PAYMENT_REFUND)
 
 # Provider infrastructure failures map to safe, provider-neutral HTTP responses.
 # No provider key, raw response body, or stack trace ever reaches the client.
@@ -188,6 +193,7 @@ def void_payment(payment_id: UUID, data: PaymentVoid, session: DatabaseSession) 
     responses={404: _ERR, 409: _ERR},
     status_code=status.HTTP_201_CREATED,
     operation_id="createPaymentRefund",
+    dependencies=[_REQUIRE_PAYMENT_REFUND],
 )
 def create_refund(payment_id: UUID, data: RefundCreate, session: DatabaseSession) -> RefundResponse:
     operation = PaymentService(session).refund(payment_id, data)

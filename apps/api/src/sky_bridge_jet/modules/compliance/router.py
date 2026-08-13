@@ -37,11 +37,17 @@ from sky_bridge_jet.modules.compliance.schemas import (
 )
 from sky_bridge_jet.modules.compliance.services import ComplianceService
 from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
+from sky_bridge_jet.modules.iam.dependencies import require_permission
+from sky_bridge_jet.modules.iam.domain import Permission
 
 router = APIRouter(tags=["compliance"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
 _ERR = {"model": ErrorResponse}
+# Platform review is high-consequence: only an authenticated principal holding the
+# compliance-review permission may decide. Operator/customer roles never hold it, so
+# an operator can never approve its own admission (Phase 8, ADR-037).
+_REQUIRE_COMPLIANCE_REVIEW = require_permission(Permission.COMPLIANCE_REVIEW)
 
 
 def register_compliance_exception_handlers(app: object) -> None:
@@ -149,6 +155,7 @@ def submit_admission(operator_id: UUID, session: DatabaseSession) -> OperatorAdm
 
 @router.post(
     "/operators/{operator_id}/admission/review",
+    dependencies=[_REQUIRE_COMPLIANCE_REVIEW],
     response_model=OperatorAdmissionResponse,
     responses={404: _ERR, 409: _ERR},
     operation_id="reviewOperatorAdmission",
@@ -210,6 +217,7 @@ def get_evidence(evidence_id: UUID, session: DatabaseSession) -> EvidenceRespons
 
 @router.post(
     "/evidence/{evidence_id}/review",
+    dependencies=[_REQUIRE_COMPLIANCE_REVIEW],
     response_model=EvidenceResponse,
     responses={404: _ERR, 409: _ERR},
     operation_id="reviewComplianceEvidence",
@@ -277,6 +285,7 @@ def submit_authorization(
 
 @router.post(
     "/operators/{operator_id}/aircraft/{aircraft_id}/authorization/review",
+    dependencies=[_REQUIRE_COMPLIANCE_REVIEW],
     response_model=AuthorizationResponse,
     responses={404: _ERR, 409: _ERR},
     operation_id="reviewAircraftAuthorization",

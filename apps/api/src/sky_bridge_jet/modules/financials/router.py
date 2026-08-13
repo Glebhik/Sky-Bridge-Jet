@@ -28,11 +28,22 @@ from sky_bridge_jet.modules.financials.schemas import (
     WebhookAckResponse,
 )
 from sky_bridge_jet.modules.financials.services import FinancialOnboardingService
+from sky_bridge_jet.modules.iam.authz import Principal, ResourceScope, authorize
+from sky_bridge_jet.modules.iam.dependencies import CurrentPrincipal
+from sky_bridge_jet.modules.iam.domain import Permission
 from sky_bridge_jet.modules.payments.domain import PaymentProviderKind
 
 router = APIRouter(tags=["financials"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 _ERR = {"model": ErrorResponse}
+
+
+def _authorize_operator_financial(
+    principal: Principal, operator_id: UUID, permission: Permission
+) -> None:
+    """Financial onboarding is operator-scoped: only that operator's finance/admin
+    staff (or a platform finance/admin principal) may read or manage it."""
+    authorize(principal, permission, ResourceScope.operator(operator_id))
 
 
 class WebhookNotConfiguredError(Exception):
@@ -108,7 +119,10 @@ def register_financial_exception_handlers(app: object) -> None:
     status_code=status.HTTP_201_CREATED,
     operation_id="createOperatorConnectedAccount",
 )
-def create_account(operator_id: UUID, session: DatabaseSession) -> ConnectedAccountResponse:
+def create_account(
+    operator_id: UUID, principal: CurrentPrincipal, session: DatabaseSession
+) -> ConnectedAccountResponse:
+    _authorize_operator_financial(principal, operator_id, Permission.FINANCIAL_ONBOARDING_MANAGE)
     return ConnectedAccountResponse.model_validate(
         FinancialOnboardingService(session).create_account(operator_id)
     )
@@ -120,7 +134,10 @@ def create_account(operator_id: UUID, session: DatabaseSession) -> ConnectedAcco
     responses={404: _ERR},
     operation_id="getOperatorConnectedAccount",
 )
-def get_account(operator_id: UUID, session: DatabaseSession) -> ConnectedAccountResponse:
+def get_account(
+    operator_id: UUID, principal: CurrentPrincipal, session: DatabaseSession
+) -> ConnectedAccountResponse:
+    _authorize_operator_financial(principal, operator_id, Permission.FINANCIAL_ONBOARDING_READ)
     return ConnectedAccountResponse.model_validate(
         FinancialOnboardingService(session).get_account(operator_id)
     )
@@ -132,7 +149,10 @@ def get_account(operator_id: UUID, session: DatabaseSession) -> ConnectedAccount
     responses={404: _ERR},
     operation_id="createOperatorOnboardingLink",
 )
-def create_onboarding_link(operator_id: UUID, session: DatabaseSession) -> OnboardingLinkResponse:
+def create_onboarding_link(
+    operator_id: UUID, principal: CurrentPrincipal, session: DatabaseSession
+) -> OnboardingLinkResponse:
+    _authorize_operator_financial(principal, operator_id, Permission.FINANCIAL_ONBOARDING_MANAGE)
     link = FinancialOnboardingService(session).create_onboarding_link(operator_id)
     return OnboardingLinkResponse(url=link.url, expires_at=link.expires_at)
 
@@ -143,7 +163,10 @@ def create_onboarding_link(operator_id: UUID, session: DatabaseSession) -> Onboa
     responses={404: _ERR},
     operation_id="synchronizeOperatorConnectedAccount",
 )
-def synchronize_account(operator_id: UUID, session: DatabaseSession) -> ConnectedAccountResponse:
+def synchronize_account(
+    operator_id: UUID, principal: CurrentPrincipal, session: DatabaseSession
+) -> ConnectedAccountResponse:
+    _authorize_operator_financial(principal, operator_id, Permission.FINANCIAL_ONBOARDING_MANAGE)
     return ConnectedAccountResponse.model_validate(
         FinancialOnboardingService(session).synchronize(operator_id)
     )
@@ -156,8 +179,9 @@ def synchronize_account(operator_id: UUID, session: DatabaseSession) -> Connecte
     operation_id="getOperatorFinancialEligibility",
 )
 def financial_eligibility(
-    operator_id: UUID, session: DatabaseSession
+    operator_id: UUID, principal: CurrentPrincipal, session: DatabaseSession
 ) -> FinancialEligibilityResponse:
+    _authorize_operator_financial(principal, operator_id, Permission.FINANCIAL_ONBOARDING_READ)
     decision = FinancialOnboardingService(session).eligibility(operator_id)
     return FinancialEligibilityResponse(
         operator_id=operator_id, eligible=decision.eligible, reasons=decision.reasons

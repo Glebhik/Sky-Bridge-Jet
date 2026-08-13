@@ -4,18 +4,23 @@ import os
 from collections.abc import Iterator
 from typing import Any
 
+import iam_support
 import pytest
 from fastapi.testclient import TestClient
 
 from sky_bridge_jet.db.session import SessionLocal
-from sky_bridge_jet.main import app
 from sky_bridge_jet.modules.core_aviation.seed import seed_airports
 
 
 @pytest.fixture(scope="module")
 def client() -> Iterator[TestClient]:
-    with TestClient(app) as test_client:
+    # Authenticated (platform admin) under integration so the enforced auth gate is
+    # exercised without weakening it; plain client otherwise (public/OpenAPI tests).
+    test_client = iam_support.integration_client()
+    try:
         yield test_client
+    finally:
+        test_client.close()
 
 
 @pytest.fixture(scope="module")

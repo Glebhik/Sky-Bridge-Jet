@@ -59,9 +59,41 @@ class Settings(BaseSettings):
     stripe_test_mode_required: bool = True
     stripe_account_country: str = "IE"
 
+    # Phase 8 identity/session settings. Cookies are hardened by default; the
+    # development environment may relax `Secure` (served over http) but production
+    # must not. Session/token lifetimes are bounded.
+    session_cookie_name: str = "sbj_session"
+    csrf_cookie_name: str = "sbj_csrf"
+    session_ttl_seconds: int = 60 * 60 * 12  # 12 hours
+    email_verification_ttl_seconds: int = 60 * 60 * 24  # 24 hours
+    password_reset_ttl_seconds: int = 60 * 60  # 1 hour
+    invitation_ttl_seconds: int = 60 * 60 * 24 * 7  # 7 days
+    # Cookie Secure flag. Defaults on; auto-relaxed for the development environment
+    # unless explicitly overridden. Never silently weakened in production.
+    session_cookie_secure: bool | None = None
+    # Fixed-window auth rate limits (per identifier). A local, in-process floor;
+    # production still fronts this with a reverse-proxy / WAF (documented).
+    auth_rate_limit_max_attempts: int = 10
+    auth_rate_limit_window_seconds: int = 60
+
+    @property
+    def cookie_secure_effective(self) -> bool:
+        """Resolve the cookie Secure flag: explicit override, else on in production.
+
+        Non-production environments (development/test) serve over plain http, so the
+        Secure flag is off by default there; production always sets it (and the
+        settings validator forbids disabling it in production).
+        """
+        if self.session_cookie_secure is not None:
+            return self.session_cookie_secure
+        return self.app_environment == "production"
+
     @model_validator(mode="after")
     def reject_insecure_production_defaults(self) -> "Settings":
         if self.app_environment == "production":
+            # Cookie hardening applies regardless of how the database URL is supplied.
+            if self.session_cookie_secure is False:
+                raise ValueError("SESSION_COOKIE_SECURE must not be disabled in production")
             if self.database_url:
                 return self
             insecure_values = {
