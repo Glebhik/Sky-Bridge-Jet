@@ -57,14 +57,26 @@ def register_booking_exception_handlers(app: object) -> None:
     operation_id="createBooking",
 )
 def create_booking(
-    data: BookingCreate, principal: CurrentPrincipal, session: DatabaseSession
+    data: BookingCreate,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
 ) -> BookingResponse:
     # Ownership is derived from the referenced trip; owner ids are never trusted from
     # the body. The service enforces the offer→trip relationship and lifecycle.
     owner = access.owner_of_trip(session, data.trip_request_id)
     access.require_customer_access(principal, Permission.TRIP_WRITE, owner)
     session.rollback()
-    return BookingResponse.model_validate(BookingService(session).create(data))
+    hook = access.platform_exception_hook(
+        principal,
+        permission=Permission.TRIP_WRITE,
+        action="createBooking",
+        resource_type="trip_request",
+        resource_reference=data.trip_request_id,
+        owner_customer_id=owner,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+    return BookingResponse.model_validate(BookingService(session).create(data, on_commit=hook))
 
 
 @router.get(
@@ -74,13 +86,26 @@ def create_booking(
     operation_id="getBooking",
 )
 def get_booking(
-    booking_id: UUID, principal: CurrentPrincipal, session: DatabaseSession
+    booking_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
 ) -> BookingResponse:
     # BookingResponse exposes platform_fee_minor / operator_amount_minor; the
     # customer-safe projection is Phase 9.0.B. Platform viewers get the full response;
     # ownership is enforced for everyone (cross-tenant → 404).
     owner = access.owner_of_booking(session, booking_id)
     access.require_confidential_read(principal, Permission.BOOKING_READ, owner)
+    access.audit_platform_read(
+        session,
+        principal,
+        permission=Permission.BOOKING_READ,
+        action="getBooking",
+        resource_type="booking",
+        resource_reference=booking_id,
+        owner_customer_id=owner,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
     return BookingResponse.model_validate(BookingService(session).get(booking_id))
 
 
@@ -91,10 +116,23 @@ def get_booking(
     operation_id="getTripRequestBooking",
 )
 def get_trip_booking(
-    trip_request_id: UUID, principal: CurrentPrincipal, session: DatabaseSession
+    trip_request_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
 ) -> BookingResponse:
     owner = access.owner_of_trip(session, trip_request_id)
     access.require_confidential_read(principal, Permission.BOOKING_READ, owner)
+    access.audit_platform_read(
+        session,
+        principal,
+        permission=Permission.BOOKING_READ,
+        action="getTripRequestBooking",
+        resource_type="trip_request",
+        resource_reference=trip_request_id,
+        owner_customer_id=owner,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
     return BookingResponse.model_validate(BookingService(session).get_for_trip(trip_request_id))
 
 
@@ -131,6 +169,7 @@ def reject_booking(
 def cancel_booking(
     booking_id: UUID,
     data: BookingCancel,
+    request: Request,
     principal: CurrentPrincipal,
     session: DatabaseSession,
 ) -> BookingResponse:
@@ -139,4 +178,15 @@ def cancel_booking(
     owner = access.owner_of_booking(session, booking_id)
     access.require_customer_access(principal, Permission.TRIP_WRITE, owner)
     session.rollback()
-    return BookingResponse.model_validate(BookingService(session).cancel(booking_id, data))
+    hook = access.platform_exception_hook(
+        principal,
+        permission=Permission.TRIP_WRITE,
+        action="cancelBooking",
+        resource_type="booking",
+        resource_reference=booking_id,
+        owner_customer_id=owner,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+    return BookingResponse.model_validate(
+        BookingService(session).cancel(booking_id, data, on_commit=hook)
+    )

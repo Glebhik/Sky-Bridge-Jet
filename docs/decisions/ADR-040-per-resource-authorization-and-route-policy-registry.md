@@ -48,6 +48,22 @@ Cross-tenant UUID probing therefore yields an indistinguishable 404 whether or n
 the resource exists. Error bodies carry no confidential tenant identifiers; platform
 exceptions are permission-bound.
 
+**Platform exceptions are audited (append-only).** A successful *platform exception*
+— a PLATFORM principal accessing a customer-owned resource by virtue of a platform
+role rather than customer ownership — writes exactly one append-only record to the
+existing Phase 8 `auth_audit_log` via `AuditRepository`, under a stable event name
+`platform_authorization_exception`. The record identifies the acting user, the acting
+platform organization, and safe metadata only (normalized action/route id, the
+permission used, resource type, an opaque resource identifier, correlation id, and
+`result=allowed`) — never passwords, tokens, financial splits, PII, or request
+bodies. An ordinary customer acting within its own tenant emits **no** event, and a
+denied attempt is **never** recorded as a successful exception. Durability is
+transactional: for a privileged **read** the record is committed before the response
+is serialized; for a privileged **write** the router passes an `on_commit` hook that
+the service runs **inside its own transaction**, so the audit commits atomically with
+the mutation and rolls back with it (a failed mutation leaves no misleading
+successful-action record — never a separate post-commit write).
+
 **A declarative route-policy registry** (`modules/route_policy.py`) gives *every*
 registered route/method an explicit disposition (PUBLIC / ALREADY_BOUND /
 PHASE_9_0A_1_BOUND / PHASE_9_0A_2_PENDING / PHASE_9_0A_3_PENDING). An automated
@@ -56,6 +72,14 @@ documentation routes = 80 normalized entries) and **fails** if any route is
 unclassified, omitted, duplicated, or a protected route is marked public. A route can
 never become accessible by being forgotten. Pending dispositions never weaken the
 global authentication gate.
+
+**Ownership immutability.** Cross-transaction ownership resolution (resolve on the
+request session, roll back, then mutate in the service transaction) is safe only
+because customer ownership is immutable in the current model: no route changes
+`trip.customer_id` / `passenger.customer_id`, and there is no ownership-transfer
+endpoint. **A future ownership-transfer endpoint must move ownership resolution,
+authorization, and the mutation into one locked, atomic transaction** rather than
+relying on this immutability assumption.
 
 ## Consequences
 

@@ -141,13 +141,26 @@ def create_payment(booking_id: UUID, session: DatabaseSession) -> PaymentRespons
     operation_id="getBookingPayment",
 )
 def get_booking_payment(
-    booking_id: UUID, principal: CurrentPrincipal, session: DatabaseSession
+    booking_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
 ) -> PaymentResponse:
     # PaymentResponse exposes platform_fee_minor / operator_amount_minor; the
     # customer-safe payment-status projection is Phase 9.0.B. Platform viewers get the
     # full response; ownership (payment→booking→trip→customer) is enforced.
     owner = access.owner_of_booking(session, booking_id)
     access.require_confidential_read(principal, Permission.PAYMENT_READ, owner)
+    access.audit_platform_read(
+        session,
+        principal,
+        permission=Permission.PAYMENT_READ,
+        action="getBookingPayment",
+        resource_type="booking",
+        resource_reference=booking_id,
+        owner_customer_id=owner,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
     return _payment(PaymentService(session).get_for_booking(booking_id))
 
 
@@ -158,10 +171,23 @@ def get_booking_payment(
     operation_id="getPayment",
 )
 def get_payment(
-    payment_id: UUID, principal: CurrentPrincipal, session: DatabaseSession
+    payment_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
 ) -> PaymentResponse:
     owner = access.owner_of_payment(session, payment_id)
     access.require_confidential_read(principal, Permission.PAYMENT_READ, owner)
+    access.audit_platform_read(
+        session,
+        principal,
+        permission=Permission.PAYMENT_READ,
+        action="getPayment",
+        resource_type="payment",
+        resource_reference=payment_id,
+        owner_customer_id=owner,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
     return _payment(PaymentService(session).get(payment_id))
 
 

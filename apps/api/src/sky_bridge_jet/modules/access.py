@@ -20,6 +20,7 @@ honored.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from uuid import UUID
 
 from sqlalchemy import select
@@ -39,8 +40,18 @@ from sky_bridge_jet.modules.iam.domain import (
     OrganizationType,
     Permission,
 )
+from sky_bridge_jet.modules.iam.repositories import AuditRepository
 from sky_bridge_jet.modules.offers.models import OperatorOffer
 from sky_bridge_jet.modules.payments.models import Payment
+
+# Callback the customer-chain write services invoke inside their own transaction, so
+# a platform-exception audit record commits atomically with (or rolls back with) the
+# mutation. Type alias kept local to avoid coupling the domain services to IAM.
+AuditHook = Callable[[Session], None]
+
+# Stable, append-only security-audit event for a successful privileged platform
+# exception exercised through the customer-authorization seam (ADR-040).
+PLATFORM_EXCEPTION_EVENT = "platform_authorization_exception"
 
 
 # --------------------------------------------------------------------------- #
@@ -217,3 +228,139 @@ def owner_of_payment(session: Session, payment_id: UUID) -> UUID | None:
 def owner_customer_of_booking_by_trip(session: Session, trip_request_id: UUID) -> UUID | None:
     """Customer owner used by the trip→booking read (same as trip owner)."""
     return owner_of_trip(session, trip_request_id)
+
+
+# --------------------------------------------------------------------------- #
+# Platform-exception security auditing (H1, ADR-040)
+# --------------------------------------------------------------------------- #
+# A privileged "platform exception" is a successful access to a customer-owned
+# resource by a PLATFORM principal that is not a member of the owning customer
+# organization (i.e. a cross-tenant/arbitrary-tenant action authorized by a platform
+# role, not by customer ownership). Every such success is recorded once, append-only,
+# in the existing Phase 8 ``auth_audit_log`` — never an ordinary customer acting in
+# its own tenant, and never a denied attempt.
+
+
+def _acting_platform_org(principal: Principal) -> UUID | None:
+    for membership in principal.memberships:
+        if membership.organization_type is OrganizationType.PLATFORM:
+            return membership.organization_id
+    return None
+
+
+def is_platform_exception(principal: Principal, owner_customer_id: UUID | None) -> bool:
+    """True when access to ``owner_customer_id`` succeeds via a platform role rather
+    than customer ownership."""
+    if owner_customer_id is None:
+        return False
+    owns = any(m.customer_id == owner_customer_id for m in _customer_memberships(principal))
+    return not owns and _acting_platform_org(principal) is not None
+
+
+def _exception_detail(
+    permission: Permission,
+    action: str,
+    resource_type: str,
+    resource_reference: UUID | str,
+    correlation_id: str | None,
+) -> str:
+    # Safe metadata only: normalized action/route id, permission, resource type and an
+    # opaque identifier. Never card/financial splits, tokens, PII, or request bodies.
+    detail = (
+        f"action={action} resource={resource_type}:{resource_reference} "
+        f"permission={permission.value} result=allowed"
+    )
+    if correlation_id:
+        detail = f"{detail} correlation={correlation_id}"
+    return detail[:300]
+
+
+def platform_exception_hook(
+    principal: Principal,
+    *,
+    permission: Permission,
+    action: str,
+    resource_type: str,
+    resource_reference: UUID | str,
+    owner_customer_id: UUID | None,
+    correlation_id: str | None = None,
+) -> AuditHook | None:
+    """Return an append-only audit hook iff this access is a platform exception.
+
+    The hook is invoked *inside* the write service's transaction (via ``on_commit``)
+    so the audit record commits atomically with the mutation and rolls back with it —
+    a failed mutation never leaves a misleading successful-action record.
+    """
+    if not is_platform_exception(principal, owner_customer_id):
+        return None
+    user_id = principal.user_id
+    org_id = _acting_platform_org(principal)
+    detail = _exception_detail(
+        permission, action, resource_type, resource_reference, correlation_id
+    )
+
+    def _hook(session: Session) -> None:
+        AuditRepository(session).record(
+            PLATFORM_EXCEPTION_EVENT, user_id=user_id, organization_id=org_id, detail=detail
+        )
+
+    return _hook
+
+
+def platform_admin_hook(
+    principal: Principal,
+    *,
+    permission: Permission,
+    action: str,
+    resource_type: str,
+    resource_reference: UUID | str,
+    correlation_id: str | None = None,
+) -> AuditHook:
+    """An unconditional platform-exception audit hook for a route already gated to a
+    platform-admin permission (e.g. platform-controlled Customer creation), where no
+    owning customer exists yet to compare against."""
+    user_id = principal.user_id
+    org_id = _acting_platform_org(principal)
+    detail = _exception_detail(
+        permission, action, resource_type, resource_reference, correlation_id
+    )
+
+    def _hook(session: Session) -> None:
+        AuditRepository(session).record(
+            PLATFORM_EXCEPTION_EVENT, user_id=user_id, organization_id=org_id, detail=detail
+        )
+
+    return _hook
+
+
+def audit_platform_read(
+    session: Session,
+    principal: Principal,
+    *,
+    permission: Permission,
+    action: str,
+    resource_type: str,
+    resource_reference: UUID | str,
+    owner_customer_id: UUID | None,
+    correlation_id: str | None = None,
+) -> None:
+    """Persist a platform-exception audit for a successful privileged *read*.
+
+    A read has no mutation to bind to, so the record is committed in its own
+    transaction before the response is serialized: if the audit fails, the request
+    fails and no privileged data is served.
+    """
+    hook = platform_exception_hook(
+        principal,
+        permission=permission,
+        action=action,
+        resource_type=resource_type,
+        resource_reference=resource_reference,
+        owner_customer_id=owner_customer_id,
+        correlation_id=correlation_id,
+    )
+    if hook is None:
+        return
+    session.rollback()  # release any autobegun read transaction
+    with session.begin():
+        hook(session)

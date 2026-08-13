@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -41,6 +42,10 @@ def _utc_now() -> datetime:
 
 def _not_found(resource_name: str) -> ResourceNotFoundError:
     return ResourceNotFoundError(f"{resource_name} was not found")
+
+
+# Optional audit hook run inside the command transaction (Phase 9.0.A-1).
+OnCommit = Callable[[Session], None] | None
 
 
 class OperatorOfferService:
@@ -198,7 +203,9 @@ class OperatorOfferService:
 
     # -- Customer action ----------------------------------------------------
 
-    def select(self, trip_request_id: UUID, offer_id: UUID) -> OperatorOffer:
+    def select(
+        self, trip_request_id: UUID, offer_id: UUID, *, on_commit: OnCommit = None
+    ) -> OperatorOffer:
         with self.session.begin():
             # Lock the trip row first so concurrent selections for the same trip
             # serialize; the partial unique index is the ultimate backstop.
@@ -220,6 +227,8 @@ class OperatorOfferService:
 
             offer.status = OfferStatus.SELECTED
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return offer
 
     # -- Reads --------------------------------------------------------------

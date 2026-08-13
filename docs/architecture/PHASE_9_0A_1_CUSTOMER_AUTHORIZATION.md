@@ -65,6 +65,41 @@ request → global auth gate (Phase 8) → route handler
 | `/bookings/{id}/cancel` | POST | customer side (owner); operator side → 9.0.A-2 |
 | `/payments/{id}`, `/bookings/{id}/payment` | GET | ownership; confidential → platform-only |
 
+## Platform-exception security auditing (H1, ADR-040)
+
+A **platform exception** is a successful access to a customer-owned resource by a
+PLATFORM principal that is not a member of the owning customer organization (a
+cross-tenant/arbitrary-tenant action authorized by a platform role, not by customer
+ownership). Every such success is recorded **once, append-only** in the Phase 8
+`auth_audit_log` (`AuditRepository`) under the stable event
+`platform_authorization_exception`.
+
+- **Which actions trigger it**: platform-controlled Customer creation
+  (`POST /customers`); platform reads of a Customer/Passenger/TripRequest outside a
+  customer membership; platform creation of a Passenger/TripRequest for a Customer;
+  platform trip submit/cancel, offer select, booking create/cancel; and platform
+  access to the confidential Offer/Booking/Payment reads.
+- **Who does not trigger it**: an ordinary customer acting within its own tenant
+  emits nothing; a denied customer/operator attempt is never recorded as a success.
+- **Safe metadata only**: acting user, acting platform organization, normalized
+  action/route id, permission, resource type, an opaque resource identifier,
+  correlation id, and `result=allowed`. Never passwords, tokens, financial splits,
+  PII, or request bodies.
+- **Durability / transaction semantics**: a privileged **read** commits its audit
+  record before the response is serialized; a privileged **write** passes an
+  `on_commit` hook that the service runs **inside its own transaction**, so the audit
+  commits atomically with the mutation and rolls back with it. A failed mutation
+  therefore leaves no misleading successful-action record, and there is no unsafe
+  separate post-commit write.
+
+## Ownership immutability (L1)
+
+The resolve-then-mutate pattern is race-free because customer ownership is immutable:
+no route changes `trip.customer_id` / `passenger.customer_id`, and there is no
+ownership-transfer endpoint. A future ownership-transfer endpoint must move ownership
+resolution, authorization, and the mutation into one locked, atomic transaction
+(ADR-040). This PR adds no such endpoint and no migration for it.
+
 ## Confidential-field boundary (ADR-041)
 
 `OperatorOfferResponse` / `BookingResponse` / `PaymentResponse` still expose
@@ -87,18 +122,33 @@ gate.
 
 - **Coverage**: 80-route classification; unclassified/duplicate/misclassified-public
   all fail.
-- **Cross-customer isolation**: A cannot read/submit/cancel/select/book/read-payment
-  on B's customer/passenger/trip/offer/booking/payment (404).
+- **Cross-customer isolation (both directions)**: every bound route is covered with a
+  scoped-customer negative test — customer/passenger/trip reads, trip submit **and
+  cancel**, **offer select** (on another tenant's trip and a foreign offer against
+  one's own trip), **booking create**, **booking cancel**, **trip→booking read**, and
+  **booking→payment read** all return 404 with DB state proven unchanged; A→B and a
+  mirrored B→A (`test_symmetric_b_cannot_access_a`).
 - **Body-owner protection**: supplying another tenant's `customer_id` never transfers
   ownership (404).
 - **Active organization**: single auto-resolves; multiple require a validated
   `X-Organization-Id`; foreign org and operator-org contexts rejected.
 - **Confidential reads**: customer 403, platform 200, cross-tenant 404; customer body
   never contains confidential fields.
+- **Platform-exception audit (real PostgreSQL)**: a successful platform exception
+  writes exactly one record with the correct actor and safe metadata; repeated
+  requests append separate records (never mutate); an ordinary customer in its own
+  tenant and a denied cross-tenant attempt write nothing; an operator cannot reach the
+  branch; a failed mutation writes no record, and a failing audit hook rolls the
+  mutation back (atomicity, both directions).
 - **Concurrency (real PostgreSQL)**: concurrent submits transition once (200 + 409);
   a cross-tenant actor cannot race a lifecycle change (intruder 404, owner 200).
-- **Regression**: the Phase 2–8 business suites authenticate as the audited
-  PRODUCT_OWNER platform actor and pass unchanged; anonymous negative tests preserved.
+- **Fixture integrity**: the new authorization tests use **real tenant-scoped CUSTOMER
+  principals** (distinct users/orgs/memberships for A and B), never PRODUCT_OWNER. The
+  legacy Phase 2–8 *business* suites legitimately authenticate as the audited
+  PRODUCT_OWNER platform actor — they predate tenancy and exercise business logic, not
+  authorization; the dedicated cross-tenant suite is what proves the gate, so the
+  shared fixture masks no authorization path. Anonymous and insufficient-permission
+  negative tests are preserved.
 
 ## Migration
 
