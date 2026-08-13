@@ -26,6 +26,13 @@ class PaymentStatus(StrEnum):
     REFUNDED = "REFUNDED"
 
 
+class PaymentProviderKind(StrEnum):
+    """Which payment provider backs a payment. The domain stays provider-neutral."""
+
+    FAKE = "FAKE"
+    STRIPE = "STRIPE"
+
+
 class PaymentOperationType(StrEnum):
     """A provider-neutral financial command recorded for idempotency and audit."""
 

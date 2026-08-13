@@ -11,6 +11,10 @@ from sky_bridge_jet.db.session import get_db
 from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
 from sky_bridge_jet.modules.payments.domain import PaymentConflictError
 from sky_bridge_jet.modules.payments.models import Payment, PaymentOperation
+from sky_bridge_jet.modules.payments.provider import (
+    PaymentProviderError,
+    ProviderErrorCategory,
+)
 from sky_bridge_jet.modules.payments.schemas import (
     AllocationResponse,
     PaymentAuthorize,
@@ -27,9 +31,51 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 
 _ERR = {"model": ErrorResponse}
 
+# Provider infrastructure failures map to safe, provider-neutral HTTP responses.
+# No provider key, raw response body, or stack trace ever reaches the client.
+_PROVIDER_ERROR_HTTP: dict[ProviderErrorCategory, tuple[int, str]] = {
+    ProviderErrorCategory.PROVIDER_UNAVAILABLE: (
+        status.HTTP_502_BAD_GATEWAY,
+        "payment_provider_unavailable",
+    ),
+    ProviderErrorCategory.PROVIDER_DECLINED: (
+        status.HTTP_402_PAYMENT_REQUIRED,
+        "payment_declined",
+    ),
+    ProviderErrorCategory.PROVIDER_REQUIRES_ACTION: (
+        status.HTTP_409_CONFLICT,
+        "payment_requires_action",
+    ),
+    ProviderErrorCategory.PROVIDER_INVALID_STATE: (
+        status.HTTP_409_CONFLICT,
+        "payment_provider_invalid_state",
+    ),
+    ProviderErrorCategory.PROVIDER_CONFIGURATION_ERROR: (
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+        "payment_provider_misconfigured",
+    ),
+    ProviderErrorCategory.PROVIDER_AUTHENTICATION_ERROR: (
+        status.HTTP_502_BAD_GATEWAY,
+        "payment_provider_authentication_error",
+    ),
+}
+
+_PROVIDER_ERROR_MESSAGE = "The payment provider could not complete the request"
+
+
+def _safe_envelope(request: Request, *, status_code: int, code: str, message: str) -> JSONResponse:
+    response = JSONResponse(
+        status_code=status_code,
+        content={"error": {"code": code, "message": message, "details": None}},
+    )
+    correlation_id = getattr(request.state, "correlation_id", None)
+    if correlation_id is not None:
+        response.headers["X-Request-ID"] = correlation_id
+    return response
+
 
 def register_payment_exception_handlers(app: object) -> None:
-    """Register the payment conflict handler using the shared safe error envelope."""
+    """Register the payment conflict/provider handlers using the safe error envelope."""
     from fastapi import FastAPI
 
     if not isinstance(app, FastAPI):
@@ -37,14 +83,21 @@ def register_payment_exception_handlers(app: object) -> None:
 
     @app.exception_handler(PaymentConflictError)
     async def payment_conflict(request: Request, error: PaymentConflictError) -> JSONResponse:
-        response = JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content={"error": {"code": error.code, "message": str(error), "details": None}},
+        return _safe_envelope(
+            request, status_code=status.HTTP_409_CONFLICT, code=error.code, message=str(error)
         )
-        correlation_id = getattr(request.state, "correlation_id", None)
-        if correlation_id is not None:
-            response.headers["X-Request-ID"] = correlation_id
-        return response
+
+    @app.exception_handler(PaymentProviderError)
+    async def payment_provider_error(request: Request, error: PaymentProviderError) -> JSONResponse:
+        status_code, code = _PROVIDER_ERROR_HTTP.get(
+            error.category,
+            (status.HTTP_502_BAD_GATEWAY, "payment_provider_error"),
+        )
+        # The provider message is intentionally discarded; a fixed safe message is
+        # returned so no provider-supplied text (which could echo a key) leaks.
+        return _safe_envelope(
+            request, status_code=status_code, code=code, message=_PROVIDER_ERROR_MESSAGE
+        )
 
 
 def _payment(payment: Payment) -> PaymentResponse:

@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     Enum,
@@ -22,12 +23,19 @@ from sky_bridge_jet.db.base import Base
 from sky_bridge_jet.modules.payments.domain import (
     PaymentOperationResult,
     PaymentOperationType,
+    PaymentProviderKind,
     PaymentStatus,
 )
+from sky_bridge_jet.modules.payments.provider import ClientAction
 
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+# Shared enum instance so the payments and financials tables reference one
+# PostgreSQL type created exactly once.
+payment_provider_enum = Enum(PaymentProviderKind, name="payment_provider_kind")
 
 
 class Payment(Base):
@@ -37,6 +45,10 @@ class Payment(Base):
     to the booking's amounts by a composite foreign key so it can never diverge.
     No card/bank credentials are ever stored — only provider-neutral references.
     """
+
+    # Permit the single non-``Mapped`` attribute below (``client_action``) to be a
+    # plain, unpersisted instance attribute rather than a mapped column.
+    __allow_unmapped__ = True
 
     __tablename__ = "payments"
     __table_args__ = (
@@ -113,8 +125,22 @@ class Payment(Base):
     captured_amount_minor: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     refunded_amount_minor: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
 
+    # Which provider backs this payment (default fake; the domain stays neutral).
+    payment_provider: Mapped[PaymentProviderKind] = mapped_column(
+        payment_provider_enum, default=PaymentProviderKind.FAKE, nullable=False
+    )
     # Provider-neutral references (identifiers, never secrets/credentials).
     provider_payment_reference: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Normalized provider-reported status (e.g. requires_capture), for reconciliation.
+    provider_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # The customer must complete an action (e.g. 3-D Secure) before authorization
+    # is final. Client-action secrets are returned once and never persisted.
+    requires_customer_action: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Transient (non-persisted) client action carried from an authorize command to
+    # the API response for a single SCA challenge. Not a ``Mapped`` column (see
+    # ``__allow_unmapped__``); it holds a client secret and is never stored/logged.
+    client_action: ClientAction | None = None
 
     authorized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

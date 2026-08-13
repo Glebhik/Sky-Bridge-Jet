@@ -5,6 +5,8 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from sky_bridge_jet.core.config import Settings, get_settings
+from sky_bridge_jet.core.stripe_gateway import build_stripe_gateway
 from sky_bridge_jet.modules.bookings.domain import BookingStatus
 from sky_bridge_jet.modules.bookings.repositories import BookingRepository
 from sky_bridge_jet.modules.core_aviation.domain import ResourceNotFoundError
@@ -14,6 +16,7 @@ from sky_bridge_jet.modules.payments.domain import (
     PaymentEligibilityError,
     PaymentOperationResult,
     PaymentOperationType,
+    PaymentProviderKind,
     PaymentStatus,
     SettlementEligibility,
     compute_settlement_eligibility,
@@ -42,6 +45,7 @@ from sky_bridge_jet.modules.payments.schemas import (
     PaymentVoid,
     RefundCreate,
 )
+from sky_bridge_jet.modules.payments.stripe_adapter import StripeConnectPaymentProvider
 
 
 def _utc_now() -> datetime:
@@ -61,16 +65,54 @@ class PaymentService:
     commands safe to retry.
     """
 
-    def __init__(self, session: Session, provider: PaymentProvider | None = None) -> None:
+    def __init__(
+        self,
+        session: Session,
+        provider: PaymentProvider | None = None,
+        settings: Settings | None = None,
+    ) -> None:
         self.session = session
         self.payments = PaymentRepository(session)
         self.operations = PaymentOperationRepository(session)
         self.bookings = BookingRepository(session)
-        self.provider = provider if provider is not None else get_payment_provider()
+        # An explicit provider overrides per-payment resolution (used by tests and
+        # by callers that inject a mocked Stripe boundary). Otherwise the provider
+        # is resolved per payment from its stored ``payment_provider`` kind, so a
+        # FAKE payment never touches Stripe even when Stripe is enabled globally.
+        self._provider_override = provider
+        self.settings = settings or get_settings()
+
+    def _provider_for(self, payment: Payment) -> PaymentProvider:
+        """Resolve the provider adapter for a single payment.
+
+        The kind is pinned on the payment row at creation, so authorize/capture/
+        refund always route to the same provider that created the intent — even if
+        global configuration changes between commands.
+        """
+        if self._provider_override is not None:
+            return self._provider_override
+        if payment.payment_provider is PaymentProviderKind.STRIPE:
+            return StripeConnectPaymentProvider(
+                build_stripe_gateway(self.settings.stripe_secret_key)
+            )
+        return get_payment_provider()
+
+    def _selected_provider_kind(
+        self, provider_kind: PaymentProviderKind | None
+    ) -> PaymentProviderKind:
+        if provider_kind is not None:
+            return provider_kind
+        if self._provider_override is not None:
+            return self._provider_override.kind
+        return (
+            PaymentProviderKind.STRIPE if self.settings.stripe_enabled else PaymentProviderKind.FAKE
+        )
 
     # -- Creation -----------------------------------------------------------
 
-    def create_for_booking(self, booking_id: UUID) -> Payment:
+    def create_for_booking(
+        self, booking_id: UUID, *, provider_kind: PaymentProviderKind | None = None
+    ) -> Payment:
         """Create the single payment for a booking; idempotent per booking."""
         with self.session.begin():
             booking = self.bookings.get_for_update(booking_id)
@@ -83,12 +125,28 @@ class PaymentService:
             if existing is not None:
                 return existing
 
+            kind = self._selected_provider_kind(provider_kind)
+            if kind is PaymentProviderKind.STRIPE:
+                # A PSP-backed payment requires the operator to be financially
+                # onboarded. Imported lazily to keep the payments module free of a
+                # hard dependency on the financials module (breaks the cycle).
+                from sky_bridge_jet.modules.financials.services import (
+                    evaluate_financial_eligibility,
+                )
+
+                decision = evaluate_financial_eligibility(self.session, booking.operator_id, kind)
+                if not decision.eligible:
+                    raise PaymentEligibilityError(
+                        "Operator is not financially onboarded for PSP-backed payments"
+                    )
+
             payment = self.payments.add(
                 Payment(
                     reference=generate_payment_reference(),
                     booking_id=booking.id,
                     status=PaymentStatus.CREATED,
                     currency=booking.currency,
+                    payment_provider=kind,
                     operator_amount_minor=booking.operator_amount_minor,
                     platform_fee_minor=booking.platform_fee_minor,
                     tax_amount_minor=booking.tax_amount_minor,
@@ -118,11 +176,13 @@ class PaymentService:
             if not is_authorizable(payment.status):
                 raise InvalidPaymentStateError("Payment cannot be authorized in its current state")
 
-            result = self.provider.authorize(
+            result = self._provider_for(payment).authorize(
                 amount_minor=payment.total_amount_minor,
                 currency=payment.currency,
                 payment_method_reference=data.payment_method_reference,
+                idempotency_key=data.idempotency_key,
             )
+            payment.provider_status = result.provider_status
             if result.outcome is ProviderOutcome.FAILED:
                 payment.status = validate_payment_transition(
                     payment.status, PaymentStatus.AUTHORIZATION_FAILED
@@ -136,6 +196,23 @@ class PaymentService:
                     provider_reference=result.provider_reference,
                     failure_code=result.failure_code,
                 )
+            elif result.outcome is ProviderOutcome.REQUIRES_ACTION:
+                # SCA/3DS: the intent exists but authorization is not final until the
+                # customer completes an action off-platform. The payment stays CREATED;
+                # a later verified webhook transitions it to AUTHORIZED. We record the
+                # command so a retry with the same key replays instead of re-creating
+                # an intent, and expose the client action transiently (never persisted).
+                payment.requires_customer_action = True
+                payment.provider_payment_reference = result.provider_reference
+                self._record(
+                    payment,
+                    PaymentOperationType.AUTHORIZE,
+                    PaymentOperationResult.SUCCEEDED,
+                    data.idempotency_key,
+                    amount_minor=payment.total_amount_minor,
+                    provider_reference=result.provider_reference,
+                )
+                payment.client_action = result.client_action
             else:
                 payment.status = validate_payment_transition(
                     payment.status, PaymentStatus.AUTHORIZED
@@ -143,6 +220,7 @@ class PaymentService:
                 payment.authorized_amount_minor = payment.total_amount_minor
                 payment.provider_payment_reference = result.provider_reference
                 payment.authorized_at = _utc_now()
+                payment.requires_customer_action = False
                 self._record(
                     payment,
                     PaymentOperationType.AUTHORIZE,
@@ -176,11 +254,13 @@ class PaymentService:
             ):
                 raise InvalidPaymentStateError("Payment has no authorization to capture")
 
-            result = self.provider.capture(
+            result = self._provider_for(payment).capture(
                 provider_reference=payment.provider_payment_reference,
                 amount_minor=payment.authorized_amount_minor,
                 currency=payment.currency,
+                idempotency_key=data.idempotency_key,
             )
+            payment.provider_status = result.provider_status
             if result.outcome is ProviderOutcome.FAILED:
                 payment.status = validate_payment_transition(
                     payment.status, PaymentStatus.CAPTURE_FAILED
@@ -223,7 +303,10 @@ class PaymentService:
 
             provider_reference = payment.provider_payment_reference
             if payment.status is PaymentStatus.AUTHORIZED and provider_reference is not None:
-                result = self.provider.void(provider_reference=provider_reference)
+                result = self._provider_for(payment).void(
+                    provider_reference=provider_reference,
+                    idempotency_key=data.idempotency_key,
+                )
                 provider_reference = result.provider_reference
 
             payment.status = validate_payment_transition(payment.status, PaymentStatus.CANCELLED)
@@ -256,10 +339,11 @@ class PaymentService:
             if data.amount_minor > remaining:
                 raise PaymentEligibilityError("Refund exceeds the remaining captured amount")
 
-            result = self.provider.refund(
+            result = self._provider_for(payment).refund(
                 provider_reference=payment.provider_payment_reference or "",
                 amount_minor=data.amount_minor,
                 currency=payment.currency,
+                idempotency_key=data.idempotency_key,
             )
             if result.outcome is ProviderOutcome.FAILED:
                 return self._record(
