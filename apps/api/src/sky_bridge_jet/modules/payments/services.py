@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -54,6 +55,13 @@ def _utc_now() -> datetime:
 
 def _not_found(resource_name: str) -> ResourceNotFoundError:
     return ResourceNotFoundError(f"{resource_name} was not found")
+
+
+# Optional append-only audit hook the router supplies; the service runs it inside the
+# command transaction and only on the success path (Phase 9.0.A-3 payment-operation
+# auditing), so the security record commits atomically with the mutation and a
+# failed/declined/replayed operation records nothing.
+OnCommit = Callable[[Session], None] | None
 
 
 class PaymentService:
@@ -111,7 +119,11 @@ class PaymentService:
     # -- Creation -----------------------------------------------------------
 
     def create_for_booking(
-        self, booking_id: UUID, *, provider_kind: PaymentProviderKind | None = None
+        self,
+        booking_id: UUID,
+        *,
+        provider_kind: PaymentProviderKind | None = None,
+        on_commit: OnCommit = None,
     ) -> Payment:
         """Create the single payment for a booking; idempotent per booking."""
         with self.session.begin():
@@ -123,6 +135,7 @@ class PaymentService:
 
             existing = self.payments.get_by_booking(booking_id)
             if existing is not None:
+                # Idempotent replay: no new payment is created, so no audit event.
                 return existing
 
             kind = self._selected_provider_kind(provider_kind)
@@ -156,11 +169,15 @@ class PaymentService:
                 )
             )
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return payment
 
     # -- Financial commands -------------------------------------------------
 
-    def authorize(self, payment_id: UUID, data: PaymentAuthorize) -> Payment:
+    def authorize(
+        self, payment_id: UUID, data: PaymentAuthorize, *, on_commit: OnCommit = None
+    ) -> Payment:
         with self.session.begin():
             payment = self.payments.get_for_update(payment_id)
             if payment is None:
@@ -230,9 +247,14 @@ class PaymentService:
                     provider_reference=result.provider_reference,
                 )
             self.session.flush()
+            # Audit a committed authorize (incl. SCA-pending), but never a decline.
+            if on_commit is not None and payment.status is not PaymentStatus.AUTHORIZATION_FAILED:
+                on_commit(self.session)
             return payment
 
-    def capture(self, payment_id: UUID, data: PaymentCapture) -> Payment:
+    def capture(
+        self, payment_id: UUID, data: PaymentCapture, *, on_commit: OnCommit = None
+    ) -> Payment:
         with self.session.begin():
             payment = self.payments.get_for_update(payment_id)
             if payment is None:
@@ -289,9 +311,12 @@ class PaymentService:
                     provider_reference=result.provider_reference,
                 )
             self.session.flush()
+            # Audit a committed capture, but never a capture failure.
+            if on_commit is not None and payment.status is not PaymentStatus.CAPTURE_FAILED:
+                on_commit(self.session)
             return payment
 
-    def void(self, payment_id: UUID, data: PaymentVoid) -> Payment:
+    def void(self, payment_id: UUID, data: PaymentVoid, *, on_commit: OnCommit = None) -> Payment:
         with self.session.begin():
             payment = self.payments.get_for_update(payment_id)
             if payment is None:
@@ -320,9 +345,13 @@ class PaymentService:
                 provider_reference=provider_reference,
             )
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return payment
 
-    def refund(self, payment_id: UUID, data: RefundCreate) -> PaymentOperation:
+    def refund(
+        self, payment_id: UUID, data: RefundCreate, *, on_commit: OnCommit = None
+    ) -> PaymentOperation:
         with self.session.begin():
             payment = self.payments.get_for_update(payment_id)
             if payment is None:
@@ -373,6 +402,8 @@ class PaymentService:
                 provider_reference=result.provider_reference,
             )
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return operation
 
     # -- Reads --------------------------------------------------------------
