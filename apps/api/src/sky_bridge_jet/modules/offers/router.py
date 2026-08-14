@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from sky_bridge_jet.db.session import get_db
 from sky_bridge_jet.modules import access
 from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
-from sky_bridge_jet.modules.iam.dependencies import CurrentPrincipal
+from sky_bridge_jet.modules.iam.dependencies import ActiveOrganization, CurrentPrincipal
 from sky_bridge_jet.modules.iam.domain import Permission
 from sky_bridge_jet.modules.offers.domain import OfferConflictError, effective_offer_status
 from sky_bridge_jet.modules.offers.models import OperatorOffer
@@ -77,57 +77,165 @@ def _to_response(offer: OperatorOffer) -> OperatorOfferResponse:
     )
 
 
+def _write_hook(
+    request: Request,
+    principal: CurrentPrincipal,
+    *,
+    action: str,
+    owner_operator_id: UUID | None,
+    resource_reference: UUID | str,
+) -> access.AuditHook | None:
+    return access.platform_operator_exception_hook(
+        principal,
+        permission=Permission.OFFER_MANAGE,
+        action=action,
+        resource_type="offer",
+        resource_reference=resource_reference,
+        owner_operator_id=owner_operator_id,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+
+
 @router.post(
     "/offers",
     response_model=OperatorOfferResponse,
-    responses={404: _ERR, 409: _ERR},
+    responses={403: _ERR, 404: _ERR, 409: _ERR},
     status_code=status.HTTP_201_CREATED,
     operation_id="createOperatorOffer",
 )
-def create_offer(data: OperatorOfferCreate, session: DatabaseSession) -> OperatorOfferResponse:
-    return _to_response(OperatorOfferService(session).create(data))
+def create_offer(
+    data: OperatorOfferCreate,
+    request: Request,
+    principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
+    session: DatabaseSession,
+) -> OperatorOfferResponse:
+    # The offering operator is derived from the active OPERATOR org; a body operator_id
+    # may only confirm that tenant. The service still enforces that the aircraft and
+    # trip belong together (aircraft↔operator mismatch remains a 422 domain error).
+    owner = access.resolve_write_operator(
+        session,
+        principal,
+        permission=Permission.OFFER_MANAGE,
+        body_operator_id=data.operator_id,
+        requested_organization_id=active_organization,
+    )
+    session.rollback()
+    scoped = data.model_copy(update={"operator_id": owner})
+    hook = _write_hook(
+        request,
+        principal,
+        action="createOperatorOffer",
+        owner_operator_id=owner,
+        resource_reference=owner,
+    )
+    return _to_response(OperatorOfferService(session).create(scoped, on_commit=hook))
 
 
 @router.get(
     "/offers/{offer_id}",
     response_model=OperatorOfferResponse,
-    responses={404: _ERR},
+    responses={403: _ERR, 404: _ERR},
     operation_id="getOperatorOffer",
 )
-def get_offer(offer_id: UUID, session: DatabaseSession) -> OperatorOfferResponse:
-    return _to_response(OperatorOfferService(session).get(offer_id))
+def get_offer(
+    offer_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> OperatorOfferResponse:
+    offer = OperatorOfferService(session).get(offer_id)  # 404 if absent
+    # The owning operator is a party to its own offer amounts; cross-operator → 404;
+    # a platform viewer is allowed and audited.
+    access.require_operator_access(principal, Permission.OFFER_READ, offer.operator_id)
+    response = _to_response(offer)
+    access.audit_operator_platform_read(
+        session,
+        principal,
+        permission=Permission.OFFER_READ,
+        action="getOperatorOffer",
+        resource_type="offer",
+        resource_reference=offer.id,
+        owner_operator_id=offer.operator_id,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+    return response
 
 
 @router.patch(
     "/offers/{offer_id}",
     response_model=OperatorOfferResponse,
-    responses={404: _ERR, 409: _ERR},
+    responses={403: _ERR, 404: _ERR, 409: _ERR},
     operation_id="updateDraftOperatorOffer",
 )
 def update_offer(
-    offer_id: UUID, data: OperatorOfferUpdate, session: DatabaseSession
+    offer_id: UUID,
+    data: OperatorOfferUpdate,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
 ) -> OperatorOfferResponse:
-    return _to_response(OperatorOfferService(session).update_draft(offer_id, data))
+    owner = access.operator_of_offer(session, offer_id)
+    access.require_operator_access(principal, Permission.OFFER_MANAGE, owner)
+    session.rollback()
+    hook = _write_hook(
+        request,
+        principal,
+        action="updateDraftOperatorOffer",
+        owner_operator_id=owner,
+        resource_reference=offer_id,
+    )
+    return _to_response(OperatorOfferService(session).update_draft(offer_id, data, on_commit=hook))
 
 
 @router.post(
     "/offers/{offer_id}/submit",
     response_model=OperatorOfferResponse,
-    responses={404: _ERR, 409: _ERR},
+    responses={403: _ERR, 404: _ERR, 409: _ERR},
     operation_id="submitOperatorOffer",
 )
-def submit_offer(offer_id: UUID, session: DatabaseSession) -> OperatorOfferResponse:
-    return _to_response(OperatorOfferService(session).submit(offer_id))
+def submit_offer(
+    offer_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> OperatorOfferResponse:
+    owner = access.operator_of_offer(session, offer_id)
+    access.require_operator_access(principal, Permission.OFFER_MANAGE, owner)
+    session.rollback()
+    hook = _write_hook(
+        request,
+        principal,
+        action="submitOperatorOffer",
+        owner_operator_id=owner,
+        resource_reference=offer_id,
+    )
+    return _to_response(OperatorOfferService(session).submit(offer_id, on_commit=hook))
 
 
 @router.post(
     "/offers/{offer_id}/withdraw",
     response_model=OperatorOfferResponse,
-    responses={404: _ERR, 409: _ERR},
+    responses={403: _ERR, 404: _ERR, 409: _ERR},
     operation_id="withdrawOperatorOffer",
 )
-def withdraw_offer(offer_id: UUID, session: DatabaseSession) -> OperatorOfferResponse:
-    return _to_response(OperatorOfferService(session).withdraw(offer_id))
+def withdraw_offer(
+    offer_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> OperatorOfferResponse:
+    owner = access.operator_of_offer(session, offer_id)
+    access.require_operator_access(principal, Permission.OFFER_MANAGE, owner)
+    session.rollback()
+    hook = _write_hook(
+        request,
+        principal,
+        action="withdrawOperatorOffer",
+        owner_operator_id=owner,
+        resource_reference=offer_id,
+    )
+    return _to_response(OperatorOfferService(session).withdraw(offer_id, on_commit=hook))
 
 
 @router.get(

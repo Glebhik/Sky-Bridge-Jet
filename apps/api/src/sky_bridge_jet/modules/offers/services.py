@@ -66,7 +66,7 @@ class OperatorOfferService:
 
     # -- Operator actions ---------------------------------------------------
 
-    def create(self, data: OperatorOfferCreate) -> OperatorOffer:
+    def create(self, data: OperatorOfferCreate, *, on_commit: OnCommit = None) -> OperatorOffer:
         with self.session.begin():
             trip = self.trips.get(data.trip_request_id)
             if trip is None:
@@ -132,9 +132,13 @@ class OperatorOfferService:
                 )
             )
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return offer
 
-    def update_draft(self, offer_id: UUID, data: OperatorOfferUpdate) -> OperatorOffer:
+    def update_draft(
+        self, offer_id: UUID, data: OperatorOfferUpdate, *, on_commit: OnCommit = None
+    ) -> OperatorOffer:
         with self.session.begin():
             offer = self.offers.get_for_update(offer_id)
             if offer is None:
@@ -169,9 +173,11 @@ class OperatorOfferService:
                 total_amount_minor=offer.total_amount_minor,
             )
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return offer
 
-    def submit(self, offer_id: UUID) -> OperatorOffer:
+    def submit(self, offer_id: UUID, *, on_commit: OnCommit = None) -> OperatorOffer:
         with self.session.begin():
             offer = self.offers.get_for_update(offer_id)
             if offer is None:
@@ -189,9 +195,11 @@ class OperatorOfferService:
 
             offer.status = OfferStatus.SUBMITTED
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return offer
 
-    def withdraw(self, offer_id: UUID) -> OperatorOffer:
+    def withdraw(self, offer_id: UUID, *, on_commit: OnCommit = None) -> OperatorOffer:
         with self.session.begin():
             offer = self.offers.get_for_update(offer_id)
             if offer is None:
@@ -199,6 +207,8 @@ class OperatorOfferService:
             validate_offer_transition(offer.status, OfferStatus.WITHDRAWN)
             offer.status = OfferStatus.WITHDRAWN
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return offer
 
     # -- Customer action ----------------------------------------------------

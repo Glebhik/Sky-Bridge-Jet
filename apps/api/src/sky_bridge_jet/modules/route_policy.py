@@ -26,10 +26,10 @@ class Disposition(StrEnum):
     PUBLIC = "PUBLIC"
     # Authenticated and already bound to the correct actor/scope (Phase 8 or self).
     ALREADY_BOUND = "ALREADY_BOUND"
-    # Bound to customer-chain resource authorization in this PR (Phase 9.0.A-1).
+    # Bound to customer-chain resource authorization (Phase 9.0.A-1).
     PHASE_9_0A_1_BOUND = "PHASE_9_0A_1_BOUND"
-    # Operator-chain authorization, owned by the next PR.
-    PHASE_9_0A_2_PENDING = "PHASE_9_0A_2_PENDING"
+    # Bound to operator-chain resource authorization in this PR (Phase 9.0.A-2).
+    PHASE_9_0A_2_BOUND = "PHASE_9_0A_2_BOUND"
     # Payment operational authorization (payment.operate), owned by 9.0.A-3.
     PHASE_9_0A_3_PENDING = "PHASE_9_0A_3_PENDING"
 
@@ -50,7 +50,7 @@ def _p(method: str, path: str, disp: Disposition, actor: str, note: str = "") ->
 _PUB = Disposition.PUBLIC
 _AB = Disposition.ALREADY_BOUND
 _P1 = Disposition.PHASE_9_0A_1_BOUND
-_P2 = Disposition.PHASE_9_0A_2_PENDING
+_P2 = Disposition.PHASE_9_0A_2_BOUND
 _P3 = Disposition.PHASE_9_0A_3_PENDING
 
 ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
@@ -150,12 +150,24 @@ ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
         "customer/platform",
     ),
     _p("POST", "/api/v1/bookings", _P1, "customer/platform"),
-    _p("GET", "/api/v1/bookings/{booking_id}", _P1, "platform (customer→9.0.B)"),
+    _p(
+        "GET",
+        "/api/v1/bookings/{booking_id}",
+        _P1,
+        "operator/platform (customer→9.0.B)",
+        "operator read added in 9.0.A-2",
+    ),
     _p("GET", "/api/v1/trip-requests/{trip_request_id}/booking", _P1, "platform (customer→9.0.B)"),
-    _p("POST", "/api/v1/bookings/{booking_id}/cancel", _P1, "customer/platform (operator→9.0.A-2)"),
+    _p(
+        "POST",
+        "/api/v1/bookings/{booking_id}/cancel",
+        _P1,
+        "customer/operator/platform",
+        "operator cancel added in 9.0.A-2",
+    ),
     _p("GET", "/api/v1/bookings/{booking_id}/payment", _P1, "platform (customer→9.0.B)"),
     _p("GET", "/api/v1/payments/{payment_id}", _P1, "platform (customer→9.0.B)"),
-    # ---- Operator chain — pending Phase 9.0.A-2 ---------------------------
+    # ---- Operator chain — bound in THIS PR (Phase 9.0.A-2) ----------------
     _p("POST", "/api/v1/operators", _P2, "platform-admin", "B2 controlled onboarding"),
     _p("GET", "/api/v1/operators/{operator_id}", _P2, "operator/platform"),
     _p("POST", "/api/v1/aircraft", _P2, "operator"),

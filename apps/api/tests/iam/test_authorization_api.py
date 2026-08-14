@@ -28,14 +28,18 @@ _REVIEW_BODY = {"action": "APPROVE", "actor_type": "PLATFORM_REVIEWER"}
 def test_operator_cannot_review_own_admission() -> None:
     admin = iam_support.platform_admin_client()
     operator_id = iam_support.create_operator(admin)
-    # Set up a submitted admission as the platform admin.
-    assert admin.post(f"/api/v1/operators/{operator_id}/admission").status_code == 201
-    assert admin.post(f"/api/v1/operators/{operator_id}/admission/submit").status_code == 200
 
-    # The operator's own admin has no compliance-review permission.
+    # The operator submits its own admission (compliance.evidence.submit); the
+    # platform admin can review but never submits on the operator's behalf (9.0.A-2).
     operator_client, _ = iam_support.operator_role_client(
         operator_id, OrganizationRole.OPERATOR_ADMIN
     )
+    assert operator_client.post(f"/api/v1/operators/{operator_id}/admission").status_code == 201
+    assert (
+        operator_client.post(f"/api/v1/operators/{operator_id}/admission/submit").status_code == 200
+    )
+
+    # The operator's own admin has no compliance-review permission.
     denied = operator_client.post(
         f"/api/v1/operators/{operator_id}/admission/review", json=_REVIEW_BODY
     )

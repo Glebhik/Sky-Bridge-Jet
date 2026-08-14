@@ -91,11 +91,16 @@ def get_booking(
     principal: CurrentPrincipal,
     session: DatabaseSession,
 ) -> BookingResponse:
-    # BookingResponse exposes platform_fee_minor / operator_amount_minor; the
-    # customer-safe projection is Phase 9.0.B. Platform viewers get the full response;
-    # ownership is enforced for everyone (cross-tenant → 404).
-    owner = access.owner_of_booking(session, booking_id)
-    access.require_confidential_read(principal, Permission.BOOKING_READ, owner)
+    # The owning operator (Booking.operator_id) is a party to its booking and receives
+    # it. The customer side keeps the Phase 9.0.A-1 confidential policy (platform full +
+    # audited, owning customer 403 until 9.0.B, cross-tenant 404).
+    owner_customer = access.owner_of_booking(session, booking_id)
+    owner_operator = access.operator_of_booking(session, booking_id)
+    access.require_booking_read_access(
+        principal, owner_customer_id=owner_customer, owner_operator_id=owner_operator
+    )
+    # Audit only a platform exception (customer-keyed fires for a platform viewer; an
+    # owning operator reading its own booking records nothing).
     access.audit_platform_read(
         session,
         principal,
@@ -103,7 +108,7 @@ def get_booking(
         action="getBooking",
         resource_type="booking",
         resource_reference=booking_id,
-        owner_customer_id=owner,
+        owner_customer_id=owner_customer,
         correlation_id=getattr(request.state, "correlation_id", None),
     )
     return BookingResponse.model_validate(BookingService(session).get(booking_id))
@@ -139,25 +144,64 @@ def get_trip_booking(
 @router.post(
     "/bookings/{booking_id}/confirm",
     response_model=BookingResponse,
-    responses={404: _ERR, 409: _ERR},
+    responses={403: _ERR, 404: _ERR, 409: _ERR},
     operation_id="confirmBooking",
 )
 def confirm_booking(
-    booking_id: UUID, data: BookingConfirm, session: DatabaseSession
+    booking_id: UUID,
+    data: BookingConfirm,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
 ) -> BookingResponse:
-    return BookingResponse.model_validate(BookingService(session).confirm(booking_id, data))
+    # Operator ownership is resolved server-side (Booking.operator_id); the body
+    # operator_id never controls authorization (the service still validates it against
+    # the booking's operator, preserving the operator-mismatch domain check).
+    owner_operator = access.operator_of_booking(session, booking_id)
+    access.require_operator_access(principal, Permission.BOOKING_DECIDE, owner_operator)
+    session.rollback()
+    hook = access.platform_operator_exception_hook(
+        principal,
+        permission=Permission.BOOKING_DECIDE,
+        action="confirmBooking",
+        resource_type="booking",
+        resource_reference=booking_id,
+        owner_operator_id=owner_operator,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+    return BookingResponse.model_validate(
+        BookingService(session).confirm(booking_id, data, on_commit=hook)
+    )
 
 
 @router.post(
     "/bookings/{booking_id}/reject",
     response_model=BookingResponse,
-    responses={404: _ERR, 409: _ERR},
+    responses={403: _ERR, 404: _ERR, 409: _ERR},
     operation_id="rejectBooking",
 )
 def reject_booking(
-    booking_id: UUID, data: BookingReject, session: DatabaseSession
+    booking_id: UUID,
+    data: BookingReject,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
 ) -> BookingResponse:
-    return BookingResponse.model_validate(BookingService(session).reject(booking_id, data))
+    owner_operator = access.operator_of_booking(session, booking_id)
+    access.require_operator_access(principal, Permission.BOOKING_DECIDE, owner_operator)
+    session.rollback()
+    hook = access.platform_operator_exception_hook(
+        principal,
+        permission=Permission.BOOKING_DECIDE,
+        action="rejectBooking",
+        resource_type="booking",
+        resource_reference=booking_id,
+        owner_operator_id=owner_operator,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+    return BookingResponse.model_validate(
+        BookingService(session).reject(booking_id, data, on_commit=hook)
+    )
 
 
 @router.post(
@@ -173,18 +217,24 @@ def cancel_booking(
     principal: CurrentPrincipal,
     session: DatabaseSession,
 ) -> BookingResponse:
-    # Phase 9.0.A-1 secures the customer side (owner via booking→trip→customer) and
-    # the platform actor. Operator-initiated cancellation scoping is Phase 9.0.A-2.
-    owner = access.owner_of_booking(session, booking_id)
-    access.require_customer_access(principal, Permission.TRIP_WRITE, owner)
+    # Phase 9.0.A-1 secured the customer side (owner via booking→trip→customer);
+    # Phase 9.0.A-2 adds the operator side (owner via Booking.operator_id,
+    # booking.decide). Either owning tenant — or an audited platform actor — may cancel.
+    owner_customer = access.owner_of_booking(session, booking_id)
+    owner_operator = access.operator_of_booking(session, booking_id)
+    access.require_booking_cancel_access(
+        principal, owner_customer_id=owner_customer, owner_operator_id=owner_operator
+    )
     session.rollback()
+    # A platform actor is a cross-tenant exception on the customer's booking; an owning
+    # customer or owning operator records nothing (own-tenant action).
     hook = access.platform_exception_hook(
         principal,
         permission=Permission.TRIP_WRITE,
         action="cancelBooking",
         resource_type="booking",
         resource_reference=booking_id,
-        owner_customer_id=owner,
+        owner_customer_id=owner_customer,
         correlation_id=getattr(request.state, "correlation_id", None),
     )
     return BookingResponse.model_validate(

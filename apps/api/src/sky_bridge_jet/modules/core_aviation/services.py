@@ -131,7 +131,7 @@ class OperatorService:
         self.operators = OperatorRepository(session)
         self.aircraft = AircraftRepository(session)
 
-    def create(self, data: OperatorCreate) -> Operator:
+    def create(self, data: OperatorCreate, *, on_commit: OnCommit = None) -> Operator:
         with self.session.begin():
             operator = self.operators.add(
                 Operator(
@@ -143,6 +143,8 @@ class OperatorService:
                 )
             )
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return operator
 
     def get(self, operator_id: UUID) -> Operator:
@@ -151,7 +153,7 @@ class OperatorService:
             raise _not_found("Operator")
         return operator
 
-    def create_aircraft(self, data: AircraftCreate) -> Aircraft:
+    def create_aircraft(self, data: AircraftCreate, *, on_commit: OnCommit = None) -> Aircraft:
         with self.session.begin():
             if self.operators.get(data.operator_id) is None:
                 raise _not_found("Operator")
@@ -166,6 +168,8 @@ class OperatorService:
                 )
             )
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return aircraft
 
     def get_aircraft(self, aircraft_id: UUID) -> Aircraft:

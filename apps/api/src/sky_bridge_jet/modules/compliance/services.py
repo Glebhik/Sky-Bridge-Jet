@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -99,6 +99,11 @@ def _not_found(resource_name: str) -> ResourceNotFoundError:
     return ResourceNotFoundError(f"{resource_name} was not found")
 
 
+# Optional audit hook run inside the command transaction (Phase 9.0.A-2
+# platform-exception auditing), so the audit commits atomically with the mutation.
+OnCommit = Callable[[Session], None] | None
+
+
 class ComplianceService:
     """Own compliance review workflows within one explicit transaction per write.
 
@@ -119,7 +124,9 @@ class ComplianceService:
 
     # -- Operator admission -------------------------------------------------
 
-    def create_admission(self, operator_id: UUID) -> OperatorAdmission:
+    def create_admission(
+        self, operator_id: UUID, *, on_commit: OnCommit = None
+    ) -> OperatorAdmission:
         with self.session.begin():
             if self.operators.get(operator_id) is None:
                 raise _not_found("Operator")
@@ -137,9 +144,13 @@ class ComplianceService:
                 admission.status.value,
                 ActorType.OPERATOR,
             )
+            if on_commit is not None:
+                on_commit(self.session)
             return admission
 
-    def submit_admission(self, operator_id: UUID) -> OperatorAdmission:
+    def submit_admission(
+        self, operator_id: UUID, *, on_commit: OnCommit = None
+    ) -> OperatorAdmission:
         with self.session.begin():
             admission = self.admissions.get_by_operator_for_update(operator_id)
             if admission is None:
@@ -157,6 +168,8 @@ class ComplianceService:
                 ActorType.OPERATOR,
             )
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return admission
 
     def review_admission(
@@ -196,7 +209,9 @@ class ComplianceService:
 
     # -- Evidence -----------------------------------------------------------
 
-    def submit_evidence(self, operator_id: UUID, data: EvidenceCreate) -> ComplianceEvidence:
+    def submit_evidence(
+        self, operator_id: UUID, data: EvidenceCreate, *, on_commit: OnCommit = None
+    ) -> ComplianceEvidence:
         with self.session.begin():
             if self.operators.get(operator_id) is None:
                 raise _not_found("Operator")
@@ -255,6 +270,8 @@ class ComplianceService:
                 ActorType.OPERATOR,
             )
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return evidence
 
     def review_evidence(
@@ -300,7 +317,12 @@ class ComplianceService:
     # -- Operator/aircraft authorization ------------------------------------
 
     def create_authorization(
-        self, operator_id: UUID, aircraft_id: UUID, data: AuthorizationCreate
+        self,
+        operator_id: UUID,
+        aircraft_id: UUID,
+        data: AuthorizationCreate,
+        *,
+        on_commit: OnCommit = None,
     ) -> OperatorAircraftAuthorization:
         with self.session.begin():
             if self.operators.get(operator_id) is None:
@@ -331,10 +353,12 @@ class ComplianceService:
                 authorization.status.value,
                 ActorType.OPERATOR,
             )
+            if on_commit is not None:
+                on_commit(self.session)
             return authorization
 
     def submit_authorization(
-        self, operator_id: UUID, aircraft_id: UUID
+        self, operator_id: UUID, aircraft_id: UUID, *, on_commit: OnCommit = None
     ) -> OperatorAircraftAuthorization:
         with self.session.begin():
             authorization = self.authorizations.get_by_pair_for_update(operator_id, aircraft_id)
@@ -353,6 +377,8 @@ class ComplianceService:
                 ActorType.OPERATOR,
             )
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return authorization
 
     def review_authorization(

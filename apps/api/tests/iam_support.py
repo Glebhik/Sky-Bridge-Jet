@@ -375,6 +375,7 @@ def full_booking_scenario(
     return {
         "customer_id": customer_id,
         "operator_id": operator["id"],
+        "aircraft_id": aircraft["id"],
         "trip_id": trip["id"],
         "offer_id": offer["id"],
         "booking_id": booking["id"],

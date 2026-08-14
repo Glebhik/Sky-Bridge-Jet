@@ -58,6 +58,9 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 # Phase 9.0.A-1: creating an arbitrary Customer is a controlled platform action
 # until Phase 9.0.B introduces verified customer self-provisioning.
 _REQUIRE_CUSTOMER_ADMIN = require_permission(Permission.ADMIN_ORGANIZATIONS_MANAGE)
+# Phase 9.0.A-2 (B2): operator onboarding is a controlled platform-admin action; no
+# separate operator-onboarding permission is introduced.
+_REQUIRE_OPERATOR_ADMIN = require_permission(Permission.ADMIN_ORGANIZATIONS_MANAGE)
 
 
 def _route_operation(request: Request) -> str:
@@ -375,43 +378,126 @@ def get_airport(airport_id: UUID, session: DatabaseSession) -> AirportResponse:
 @router.post(
     "/operators",
     response_model=OperatorResponse,
-    responses={409: {"model": ErrorResponse}},
+    responses={403: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
     status_code=status.HTTP_201_CREATED,
     operation_id="createOperator",
+    dependencies=[_REQUIRE_OPERATOR_ADMIN],
 )
-def create_operator(data: OperatorCreate, session: DatabaseSession) -> OperatorResponse:
-    return OperatorResponse.model_validate(OperatorService(session).create(data))
+def create_operator(
+    data: OperatorCreate,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> OperatorResponse:
+    # Platform-controlled creation (gated above); audited atomically with the insert.
+    hook = access.platform_admin_hook(
+        principal,
+        permission=Permission.ADMIN_ORGANIZATIONS_MANAGE,
+        action="createOperator",
+        resource_type="operator",
+        resource_reference="new",
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+    return OperatorResponse.model_validate(OperatorService(session).create(data, on_commit=hook))
 
 
 @router.get(
     "/operators/{operator_id}",
     response_model=OperatorResponse,
-    responses={404: {"model": ErrorResponse}},
+    responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
     operation_id="getOperator",
 )
-def get_operator(operator_id: UUID, session: DatabaseSession) -> OperatorResponse:
-    return OperatorResponse.model_validate(OperatorService(session).get(operator_id))
+def get_operator(
+    operator_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> OperatorResponse:
+    operator = OperatorService(session).get(operator_id)  # 404 if absent
+    access.require_operator_access(principal, Permission.OPERATOR_READ, operator.id)
+    response = OperatorResponse.model_validate(operator)
+    access.audit_operator_platform_read(
+        session,
+        principal,
+        permission=Permission.OPERATOR_READ,
+        action="getOperator",
+        resource_type="operator",
+        resource_reference=operator.id,
+        owner_operator_id=operator.id,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+    return response
 
 
 @router.post(
     "/aircraft",
     response_model=AircraftResponse,
-    responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
     status_code=status.HTTP_201_CREATED,
     operation_id="createAircraft",
 )
-def create_aircraft(data: AircraftCreate, session: DatabaseSession) -> AircraftResponse:
-    return AircraftResponse.model_validate(OperatorService(session).create_aircraft(data))
+def create_aircraft(
+    data: AircraftCreate,
+    request: Request,
+    principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
+    session: DatabaseSession,
+) -> AircraftResponse:
+    # Ownership is derived from the active OPERATOR org; a body operator_id may only
+    # confirm that tenant. Managing aircraft requires operator.manage.
+    owner = access.resolve_write_operator(
+        session,
+        principal,
+        permission=Permission.OPERATOR_MANAGE,
+        body_operator_id=data.operator_id,
+        requested_organization_id=active_organization,
+    )
+    session.rollback()  # release the ownership read before the service's write txn
+    scoped = data.model_copy(update={"operator_id": owner})
+    hook = access.platform_operator_exception_hook(
+        principal,
+        permission=Permission.OPERATOR_MANAGE,
+        action="createAircraft",
+        resource_type="aircraft",
+        resource_reference=owner,
+        owner_operator_id=owner,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+    return AircraftResponse.model_validate(
+        OperatorService(session).create_aircraft(scoped, on_commit=hook)
+    )
 
 
 @router.get(
     "/aircraft/{aircraft_id}",
     response_model=AircraftResponse,
-    responses={404: {"model": ErrorResponse}},
+    responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
     operation_id="getAircraft",
 )
-def get_aircraft(aircraft_id: UUID, session: DatabaseSession) -> AircraftResponse:
-    return AircraftResponse.model_validate(OperatorService(session).get_aircraft(aircraft_id))
+def get_aircraft(
+    aircraft_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> AircraftResponse:
+    aircraft = OperatorService(session).get_aircraft(aircraft_id)  # 404 if absent
+    access.require_operator_access(principal, Permission.OPERATOR_READ, aircraft.operator_id)
+    response = AircraftResponse.model_validate(aircraft)
+    access.audit_operator_platform_read(
+        session,
+        principal,
+        permission=Permission.OPERATOR_READ,
+        action="getAircraft",
+        resource_type="aircraft",
+        resource_reference=aircraft.id,
+        owner_operator_id=aircraft.operator_id,
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+    return response
 
 
 @router.post(
