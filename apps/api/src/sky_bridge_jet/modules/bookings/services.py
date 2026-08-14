@@ -120,7 +120,9 @@ class BookingService:
 
     # -- Operator actions ---------------------------------------------------
 
-    def confirm(self, booking_id: UUID, data: BookingConfirm) -> Booking:
+    def confirm(
+        self, booking_id: UUID, data: BookingConfirm, *, on_commit: OnCommit = None
+    ) -> Booking:
         with self.session.begin():
             booking = self.bookings.get_for_update(booking_id)
             if booking is None:
@@ -154,9 +156,13 @@ class BookingService:
             booking.operator_confirmation_reference = data.confirmation_reference
             booking.confirmation_note = data.note
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return booking
 
-    def reject(self, booking_id: UUID, data: BookingReject) -> Booking:
+    def reject(
+        self, booking_id: UUID, data: BookingReject, *, on_commit: OnCommit = None
+    ) -> Booking:
         with self.session.begin():
             booking = self.bookings.get_for_update(booking_id)
             if booking is None:
@@ -170,6 +176,8 @@ class BookingService:
             booking.rejection_reason = data.reason
             booking.rejection_note = data.note
             self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
             return booking
 
     # -- Cancellation (customer / operator / platform) ----------------------

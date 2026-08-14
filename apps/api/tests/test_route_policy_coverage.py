@@ -61,16 +61,27 @@ def test_public_dispositions_match_the_authentication_gate() -> None:
 
 
 def test_no_versioned_pending_route_is_public() -> None:
-    """Pending dispositions must never be public — the global gate still applies."""
-    pending = {
+    """Non-public dispositions must never be public — the global gate still applies."""
+    protected = {
         Disposition.PHASE_9_0A_1_BOUND,
-        Disposition.PHASE_9_0A_2_PENDING,
+        Disposition.PHASE_9_0A_2_BOUND,
         Disposition.PHASE_9_0A_3_PENDING,
         Disposition.ALREADY_BOUND,
     }
     for policy in ROUTE_POLICIES:
-        if policy.disposition in pending:
+        if policy.disposition in protected:
             assert not is_public_route(policy.method, policy.path), policy
+
+
+def test_operator_chain_is_fully_bound_no_pending_remains() -> None:
+    """Phase 9.0.A-2 binds every operator-chain route; nothing stays pending here."""
+    index = policy_index()
+    bound = [k for k, p in index.items() if p.disposition is Disposition.PHASE_9_0A_2_BOUND]
+    assert len(bound) == 24, sorted(bound)
+    # The 9.0.A-2-pending disposition no longer exists; 9.0.A-3 pending is untouched.
+    assert not hasattr(Disposition, "PHASE_9_0A_2_PENDING")
+    p3 = [k for k, p in index.items() if p.disposition is Disposition.PHASE_9_0A_3_PENDING]
+    assert len(p3) == 6, sorted(p3)
 
 
 def test_coverage_detects_an_unclassified_route() -> None:
