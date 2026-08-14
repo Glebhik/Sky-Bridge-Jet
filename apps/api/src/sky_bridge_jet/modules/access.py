@@ -555,6 +555,14 @@ def operator_of_booking(session: Session, booking_id: UUID) -> UUID | None:
     return session.scalar(select(Booking.operator_id).where(Booking.id == booking_id))
 
 
+def operator_of_payment(session: Session, payment_id: UUID) -> UUID | None:
+    return session.scalar(
+        select(Booking.operator_id)
+        .join(Payment, Payment.booking_id == Booking.id)
+        .where(Payment.id == payment_id)
+    )
+
+
 def operator_of_evidence(session: Session, evidence_id: UUID) -> UUID | None:
     return session.scalar(
         select(ComplianceEvidence.operator_id).where(ComplianceEvidence.id == evidence_id)
@@ -635,3 +643,77 @@ def audit_operator_platform_read(
     session.rollback()  # release any autobegun read transaction
     with session.begin():
         hook(session)
+
+
+# --------------------------------------------------------------------------- #
+# Payment operational authorization (Phase 9.0.A-3, ADR-043)
+# --------------------------------------------------------------------------- #
+# Internal payment operations (create/authorize/capture/void/refund) are a
+# platform-only capability. Their success is recorded under a distinct, stable
+# append-only security event so a payment mutation is never mislabelled as a read
+# exception. Allocation and refund-list *reads* remain platform-read-only here; an
+# owning customer/operator is denied (403, no safe financial projection yet) and a
+# cross-tenant probe is concealed (404).
+
+# Stable append-only security-audit event for a successful internal payment mutation.
+PAYMENT_OPERATION_EVENT = "payment_operational_action"
+
+
+def require_financial_platform_read(
+    principal: Principal,
+    permission: Permission,
+    *,
+    owner_customer_id: UUID | None,
+    owner_operator_id: UUID | None,
+) -> None:
+    """Enforce a platform-only read of a confidential financial resource.
+
+    Applies to the allocation and refund-list reads, whose responses expose the
+    internal operator/platform split, settlement eligibility, and provider references.
+    Only a platform viewer holding ``permission`` (e.g. ``payment.read``) receives the
+    response; an owning customer or owning operator is temporarily denied with 403 (no
+    customer/operator-safe financial projection exists yet — Phase 9.0.B); any other
+    principal or a cross-tenant probe receives 404 so existence is concealed.
+    """
+    if owner_customer_id is None and owner_operator_id is None:
+        raise ResourceNotFoundError("Resource was not found")
+    if has_platform_permission(principal, permission):
+        return
+    owns_customer = owner_customer_id is not None and any(
+        m.customer_id == owner_customer_id for m in _customer_memberships(principal)
+    )
+    if owns_customer or _owns_operator(principal, owner_operator_id):
+        raise AuthorizationError("A safe view of this financial resource is not yet available")
+    raise ResourceNotFoundError("Resource was not found")
+
+
+def payment_operation_hook(
+    principal: Principal,
+    *,
+    permission: Permission,
+    action: str,
+    resource_type: str,
+    resource_reference: UUID | str,
+    correlation_id: str | None = None,
+) -> AuditHook:
+    """An unconditional append-only audit hook for a successful internal payment mutation.
+
+    The route already gates the actor to the required platform permission
+    (``payment.operate`` / ``payment.refund``), so every invocation is a privileged
+    platform action. The hook is run *inside* the payment service's transaction via
+    ``on_commit`` and only on the success path, so the record commits atomically with
+    the mutation and a failed/declined/replayed operation records nothing. Safe
+    metadata only — never amounts, provider references, tokens, or PII.
+    """
+    user_id = principal.user_id
+    org_id = _acting_platform_org(principal)
+    detail = _exception_detail(
+        permission, action, resource_type, resource_reference, correlation_id
+    )
+
+    def _hook(session: Session) -> None:
+        AuditRepository(session).record(
+            PAYMENT_OPERATION_EVENT, user_id=user_id, organization_id=org_id, detail=detail
+        )
+
+    return _hook

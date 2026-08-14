@@ -124,6 +124,10 @@ class Permission(StrEnum):
     PAYMENT_READ = "payment.read"
     PAYMENT_INITIATE = "payment.initiate"
     PAYMENT_REFUND = "payment.refund"
+    # Internal/trusted payment operations (create/authorize/capture/void). Additive,
+    # platform-only capability introduced in Phase 9.0.A-3; distinct from the
+    # high-consequence refund capability (payment.refund), which is unchanged.
+    PAYMENT_OPERATE = "payment.operate"
     # Operator-facing
     OPERATOR_READ = "operator.read"
     OPERATOR_MANAGE = "operator.manage"
@@ -199,11 +203,14 @@ ROLE_PERMISSIONS: Final[dict[OrganizationRole, frozenset[Permission]]] = {
     OrganizationRole.PLATFORM_COMPLIANCE_REVIEWER: frozenset(
         {Permission.OPERATOR_READ, Permission.COMPLIANCE_REVIEW}
     ),
+    # Read-only finance reviewer (Phase 9.0.A-3 B1/B2): payment.read for visibility and
+    # finance.review, but NO payment mutation capability — neither payment.operate nor
+    # payment.refund. (Phase 8 granted payment.refund here; ADR-043 corrects that to keep
+    # the role strictly read-only, per the Product Owner decision.)
     OrganizationRole.PLATFORM_FINANCE_REVIEWER: frozenset(
         {
             Permission.OPERATOR_READ,
             Permission.PAYMENT_READ,
-            Permission.PAYMENT_REFUND,
             Permission.FINANCE_REVIEW,
             Permission.FINANCIAL_ONBOARDING_READ,
         }
@@ -218,6 +225,7 @@ ROLE_PERMISSIONS: Final[dict[OrganizationRole, frozenset[Permission]]] = {
             Permission.BOOKING_READ,
             Permission.PAYMENT_READ,
             Permission.PAYMENT_REFUND,
+            Permission.PAYMENT_OPERATE,
             Permission.COMPLIANCE_REVIEW,
             Permission.FINANCE_REVIEW,
             Permission.FINANCIAL_ONBOARDING_READ,

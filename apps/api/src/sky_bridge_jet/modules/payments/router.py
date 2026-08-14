@@ -33,9 +33,17 @@ router = APIRouter(tags=["payments"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
 _ERR = {"model": ErrorResponse}
-# Refunds are a high-consequence financial action bound to a platform finance/admin
-# principal (Phase 8): an arbitrary authenticated user cannot refund a payment.
+# Refunds are a high-consequence financial action bound to the payment.refund
+# permission (Phase 8): an arbitrary authenticated user cannot refund a payment.
 _REQUIRE_PAYMENT_REFUND = require_permission(Permission.PAYMENT_REFUND)
+# Internal payment operations (create/authorize/capture/void) are platform-only
+# (Phase 9.0.A-3): payment.operate is held solely by PLATFORM_ADMIN and PRODUCT_OWNER.
+_REQUIRE_PAYMENT_OPERATE = require_permission(Permission.PAYMENT_OPERATE)
+
+
+def _correlation(request: Request) -> str | None:
+    return getattr(request.state, "correlation_id", None)
+
 
 # Provider infrastructure failures map to safe, provider-neutral HTTP responses.
 # No provider key, raw response body, or stack trace ever reaches the client.
@@ -126,12 +134,28 @@ def _refund(operation: PaymentOperation, currency: str) -> RefundResponse:
 @router.post(
     "/bookings/{booking_id}/payment",
     response_model=PaymentResponse,
-    responses={404: _ERR, 409: _ERR},
+    responses={403: _ERR, 404: _ERR, 409: _ERR},
     status_code=status.HTTP_201_CREATED,
     operation_id="createBookingPayment",
+    dependencies=[_REQUIRE_PAYMENT_OPERATE],
 )
-def create_payment(booking_id: UUID, session: DatabaseSession) -> PaymentResponse:
-    return _payment(PaymentService(session).create_for_booking(booking_id))
+def create_payment(
+    booking_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> PaymentResponse:
+    # Internal/trusted platform action (B3/D): gated to payment.operate above; the
+    # Booking is resolved server-side and no ownership id is trusted from the body.
+    hook = access.payment_operation_hook(
+        principal,
+        permission=Permission.PAYMENT_OPERATE,
+        action="createBookingPayment",
+        resource_type="booking",
+        resource_reference=booking_id,
+        correlation_id=_correlation(request),
+    )
+    return _payment(PaymentService(session).create_for_booking(booking_id, on_commit=hook))
 
 
 @router.get(
@@ -191,60 +215,150 @@ def get_payment(
     return _payment(PaymentService(session).get(payment_id))
 
 
+def _operation_hook(
+    request: Request, principal: CurrentPrincipal, action: str, payment_id: UUID
+) -> access.AuditHook:
+    return access.payment_operation_hook(
+        principal,
+        permission=Permission.PAYMENT_OPERATE,
+        action=action,
+        resource_type="payment",
+        resource_reference=payment_id,
+        correlation_id=_correlation(request),
+    )
+
+
 @router.post(
     "/payments/{payment_id}/authorize",
     response_model=PaymentResponse,
-    responses={404: _ERR, 409: _ERR},
+    responses={403: _ERR, 404: _ERR, 409: _ERR},
     operation_id="authorizePayment",
+    dependencies=[_REQUIRE_PAYMENT_OPERATE],
 )
 def authorize_payment(
-    payment_id: UUID, data: PaymentAuthorize, session: DatabaseSession
+    payment_id: UUID,
+    data: PaymentAuthorize,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
 ) -> PaymentResponse:
-    return _payment(PaymentService(session).authorize(payment_id, data))
+    hook = _operation_hook(request, principal, "authorizePayment", payment_id)
+    return _payment(PaymentService(session).authorize(payment_id, data, on_commit=hook))
 
 
 @router.post(
     "/payments/{payment_id}/capture",
     response_model=PaymentResponse,
-    responses={404: _ERR, 409: _ERR},
+    responses={403: _ERR, 404: _ERR, 409: _ERR},
     operation_id="capturePayment",
+    dependencies=[_REQUIRE_PAYMENT_OPERATE],
 )
 def capture_payment(
-    payment_id: UUID, data: PaymentCapture, session: DatabaseSession
+    payment_id: UUID,
+    data: PaymentCapture,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
 ) -> PaymentResponse:
-    return _payment(PaymentService(session).capture(payment_id, data))
+    hook = _operation_hook(request, principal, "capturePayment", payment_id)
+    return _payment(PaymentService(session).capture(payment_id, data, on_commit=hook))
 
 
 @router.post(
     "/payments/{payment_id}/void",
     response_model=PaymentResponse,
-    responses={404: _ERR, 409: _ERR},
+    responses={403: _ERR, 404: _ERR, 409: _ERR},
     operation_id="voidPayment",
+    dependencies=[_REQUIRE_PAYMENT_OPERATE],
 )
-def void_payment(payment_id: UUID, data: PaymentVoid, session: DatabaseSession) -> PaymentResponse:
-    return _payment(PaymentService(session).void(payment_id, data))
+def void_payment(
+    payment_id: UUID,
+    data: PaymentVoid,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> PaymentResponse:
+    hook = _operation_hook(request, principal, "voidPayment", payment_id)
+    return _payment(PaymentService(session).void(payment_id, data, on_commit=hook))
 
 
 @router.post(
     "/payments/{payment_id}/refunds",
     response_model=RefundResponse,
-    responses={404: _ERR, 409: _ERR},
+    responses={403: _ERR, 404: _ERR, 409: _ERR},
     status_code=status.HTTP_201_CREATED,
     operation_id="createPaymentRefund",
     dependencies=[_REQUIRE_PAYMENT_REFUND],
 )
-def create_refund(payment_id: UUID, data: RefundCreate, session: DatabaseSession) -> RefundResponse:
-    operation = PaymentService(session).refund(payment_id, data)
+def create_refund(
+    payment_id: UUID,
+    data: RefundCreate,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> RefundResponse:
+    # Refunds remain gated to payment.refund (unchanged, Phase 8); a successful refund
+    # is append-only audited atomically with the mutation. The permission recorded is
+    # payment.refund — the refund capability is NOT folded into payment.operate.
+    hook = access.payment_operation_hook(
+        principal,
+        permission=Permission.PAYMENT_REFUND,
+        action="createPaymentRefund",
+        resource_type="payment",
+        resource_reference=payment_id,
+        correlation_id=_correlation(request),
+    )
+    operation = PaymentService(session).refund(payment_id, data, on_commit=hook)
     return _refund(operation, operation.payment.currency)
+
+
+def _require_financial_read(
+    session: Session,
+    request: Request,
+    principal: CurrentPrincipal,
+    *,
+    action: str,
+    payment_id: UUID,
+) -> None:
+    # Allocation and refund-list responses expose the internal operator/platform split,
+    # settlement eligibility, and provider references. Only a platform payment.read
+    # viewer receives them; an owning customer/operator is temporarily denied (403), a
+    # cross-tenant probe is concealed (404). Platform reads are append-only audited.
+    owner_customer = access.owner_of_payment(session, payment_id)
+    owner_operator = access.operator_of_payment(session, payment_id)
+    access.require_financial_platform_read(
+        principal,
+        Permission.PAYMENT_READ,
+        owner_customer_id=owner_customer,
+        owner_operator_id=owner_operator,
+    )
+    access.audit_platform_read(
+        session,
+        principal,
+        permission=Permission.PAYMENT_READ,
+        action=action,
+        resource_type="payment",
+        resource_reference=payment_id,
+        owner_customer_id=owner_customer,
+        correlation_id=_correlation(request),
+    )
 
 
 @router.get(
     "/payments/{payment_id}/refunds",
     response_model=list[RefundResponse],
-    responses={404: _ERR},
+    responses={403: _ERR, 404: _ERR},
     operation_id="listPaymentRefunds",
 )
-def list_refunds(payment_id: UUID, session: DatabaseSession) -> list[RefundResponse]:
+def list_refunds(
+    payment_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> list[RefundResponse]:
+    _require_financial_read(
+        session, request, principal, action="listPaymentRefunds", payment_id=payment_id
+    )
     service = PaymentService(session)
     payment = service.get(payment_id)
     return [_refund(operation, payment.currency) for operation in service.list_refunds(payment_id)]
@@ -253,10 +367,18 @@ def list_refunds(payment_id: UUID, session: DatabaseSession) -> list[RefundRespo
 @router.get(
     "/payments/{payment_id}/allocation",
     response_model=AllocationResponse,
-    responses={404: _ERR},
+    responses={403: _ERR, 404: _ERR},
     operation_id="getPaymentAllocation",
 )
-def get_allocation(payment_id: UUID, session: DatabaseSession) -> AllocationResponse:
+def get_allocation(
+    payment_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> AllocationResponse:
+    _require_financial_read(
+        session, request, principal, action="getPaymentAllocation", payment_id=payment_id
+    )
     payment, eligibility = PaymentService(session).get_allocation(payment_id)
     return AllocationResponse(
         payment_id=payment.id,

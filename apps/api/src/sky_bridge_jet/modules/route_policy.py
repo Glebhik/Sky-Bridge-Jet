@@ -28,10 +28,10 @@ class Disposition(StrEnum):
     ALREADY_BOUND = "ALREADY_BOUND"
     # Bound to customer-chain resource authorization (Phase 9.0.A-1).
     PHASE_9_0A_1_BOUND = "PHASE_9_0A_1_BOUND"
-    # Bound to operator-chain resource authorization in this PR (Phase 9.0.A-2).
+    # Bound to operator-chain resource authorization (Phase 9.0.A-2).
     PHASE_9_0A_2_BOUND = "PHASE_9_0A_2_BOUND"
-    # Payment operational authorization (payment.operate), owned by 9.0.A-3.
-    PHASE_9_0A_3_PENDING = "PHASE_9_0A_3_PENDING"
+    # Bound to payment operational authorization in this PR (Phase 9.0.A-3).
+    PHASE_9_0A_3_BOUND = "PHASE_9_0A_3_BOUND"
 
 
 @dataclass(frozen=True)
@@ -51,7 +51,7 @@ _PUB = Disposition.PUBLIC
 _AB = Disposition.ALREADY_BOUND
 _P1 = Disposition.PHASE_9_0A_1_BOUND
 _P2 = Disposition.PHASE_9_0A_2_BOUND
-_P3 = Disposition.PHASE_9_0A_3_PENDING
+_P3 = Disposition.PHASE_9_0A_3_BOUND
 
 ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
     # ---- Platform / documentation / discovery (public) --------------------
@@ -212,19 +212,36 @@ ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
         "operator/platform",
     ),
     _p("GET", "/api/v1/operators/{operator_id}/eligibility", _P2, "operator/platform"),
-    # ---- Payment operations — pending Phase 9.0.A-3 ----------------------
-    _p("POST", "/api/v1/bookings/{booking_id}/payment", _P3, "internal/trusted", "B3 not customer"),
-    _p("GET", "/api/v1/payments/{payment_id}/allocation", _P3, "operator/platform (confidential)"),
-    _p("GET", "/api/v1/payments/{payment_id}/refunds", _P3, "operator/platform"),
-    _p("POST", "/api/v1/payments/{payment_id}/authorize", _P3, "platform-finance/admin"),
-    _p("POST", "/api/v1/payments/{payment_id}/capture", _P3, "platform-finance/admin"),
-    _p("POST", "/api/v1/payments/{payment_id}/void", _P3, "platform-finance/admin"),
+    # ---- Payment operations — bound in THIS PR (Phase 9.0.A-3) ------------
+    _p(
+        "POST",
+        "/api/v1/bookings/{booking_id}/payment",
+        _P3,
+        "platform (payment.operate)",
+        "B3/D internal/trusted; not customer/operator",
+    ),
+    _p(
+        "GET",
+        "/api/v1/payments/{payment_id}/allocation",
+        _P3,
+        "platform payment.read (customer/operator→9.0.B)",
+        "confidential financial split",
+    ),
+    _p(
+        "GET",
+        "/api/v1/payments/{payment_id}/refunds",
+        _P3,
+        "platform payment.read (customer/operator→9.0.B)",
+    ),
+    _p("POST", "/api/v1/payments/{payment_id}/authorize", _P3, "platform (payment.operate)"),
+    _p("POST", "/api/v1/payments/{payment_id}/capture", _P3, "platform (payment.operate)"),
+    _p("POST", "/api/v1/payments/{payment_id}/void", _P3, "platform (payment.operate)"),
     _p(
         "POST",
         "/api/v1/payments/{payment_id}/refunds",
         _AB,
-        "platform-finance/admin",
-        "payment.refund (Phase 8)",
+        "platform (payment.refund)",
+        "payment.refund unchanged; ADR-043 removed finance-reviewer grant",
     ),
 )
 

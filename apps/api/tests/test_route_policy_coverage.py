@@ -65,7 +65,7 @@ def test_no_versioned_pending_route_is_public() -> None:
     protected = {
         Disposition.PHASE_9_0A_1_BOUND,
         Disposition.PHASE_9_0A_2_BOUND,
-        Disposition.PHASE_9_0A_3_PENDING,
+        Disposition.PHASE_9_0A_3_BOUND,
         Disposition.ALREADY_BOUND,
     }
     for policy in ROUTE_POLICIES:
@@ -74,14 +74,20 @@ def test_no_versioned_pending_route_is_public() -> None:
 
 
 def test_operator_chain_is_fully_bound_no_pending_remains() -> None:
-    """Phase 9.0.A-2 binds every operator-chain route; nothing stays pending here."""
+    """Phase 9.0.A-2 binds every operator-chain route (24); it stays fully bound."""
     index = policy_index()
     bound = [k for k, p in index.items() if p.disposition is Disposition.PHASE_9_0A_2_BOUND]
     assert len(bound) == 24, sorted(bound)
-    # The 9.0.A-2-pending disposition no longer exists; 9.0.A-3 pending is untouched.
     assert not hasattr(Disposition, "PHASE_9_0A_2_PENDING")
-    p3 = [k for k, p in index.items() if p.disposition is Disposition.PHASE_9_0A_3_PENDING]
-    assert len(p3) == 6, sorted(p3)
+
+
+def test_payment_operations_are_fully_bound_no_pending_remains() -> None:
+    """Phase 9.0.A-3 binds every payment-operation route; nothing stays pending."""
+    index = policy_index()
+    bound = [k for k, p in index.items() if p.disposition is Disposition.PHASE_9_0A_3_BOUND]
+    assert len(bound) == 6, sorted(bound)
+    # The 9.0.A-3-pending disposition no longer exists; no pending payment route remains.
+    assert not hasattr(Disposition, "PHASE_9_0A_3_PENDING")
 
 
 def test_coverage_detects_an_unclassified_route() -> None:
