@@ -19,6 +19,7 @@ from sky_bridge_jet.modules.bookings.schemas import (
 )
 from sky_bridge_jet.modules.bookings.services import BookingService
 from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
+from sky_bridge_jet.modules.customer_views import CustomerBookingView, customer_booking_view
 from sky_bridge_jet.modules.iam.dependencies import CurrentPrincipal
 from sky_bridge_jet.modules.iam.domain import Permission
 
@@ -51,7 +52,7 @@ def register_booking_exception_handlers(app: object) -> None:
 
 @router.post(
     "/bookings",
-    response_model=BookingResponse,
+    response_model=None,
     responses={403: _ERR, 404: _ERR, 409: _ERR},
     status_code=status.HTTP_201_CREATED,
     operation_id="createBooking",
@@ -61,9 +62,10 @@ def create_booking(
     request: Request,
     principal: CurrentPrincipal,
     session: DatabaseSession,
-) -> BookingResponse:
+) -> BookingResponse | CustomerBookingView:
     # Ownership is derived from the referenced trip; owner ids are never trusted from
-    # the body. The service enforces the offer→trip relationship and lifecycle.
+    # the body. The service enforces the offer→trip relationship and lifecycle. The
+    # owning customer receives a customer-safe view (Phase 9.0.B); platform → full.
     owner = access.owner_of_trip(session, data.trip_request_id)
     access.require_customer_access(principal, Permission.TRIP_WRITE, owner)
     session.rollback()
@@ -76,12 +78,15 @@ def create_booking(
         owner_customer_id=owner,
         correlation_id=getattr(request.state, "correlation_id", None),
     )
-    return BookingResponse.model_validate(BookingService(session).create(data, on_commit=hook))
+    booking = BookingService(session).create(data, on_commit=hook)
+    if access.is_customer_view(principal, owner):
+        return customer_booking_view(booking)
+    return BookingResponse.model_validate(booking)
 
 
 @router.get(
     "/bookings/{booking_id}",
-    response_model=BookingResponse,
+    response_model=None,
     responses={403: _ERR, 404: _ERR},
     operation_id="getBooking",
 )
@@ -90,17 +95,15 @@ def get_booking(
     request: Request,
     principal: CurrentPrincipal,
     session: DatabaseSession,
-) -> BookingResponse:
-    # The owning operator (Booking.operator_id) is a party to its booking and receives
-    # it. The customer side keeps the Phase 9.0.A-1 confidential policy (platform full +
-    # audited, owning customer 403 until 9.0.B, cross-tenant 404).
+) -> BookingResponse | CustomerBookingView:
+    # The owning operator (Booking.operator_id) is a party and receives the full
+    # response; the owning customer receives a customer-safe view (Phase 9.0.B); a
+    # platform viewer receives the full response (and is audited); cross-tenant → 404.
     owner_customer = access.owner_of_booking(session, booking_id)
     owner_operator = access.operator_of_booking(session, booking_id)
     access.require_booking_read_access(
         principal, owner_customer_id=owner_customer, owner_operator_id=owner_operator
     )
-    # Audit only a platform exception (customer-keyed fires for a platform viewer; an
-    # owning operator reading its own booking records nothing).
     access.audit_platform_read(
         session,
         principal,
@@ -111,12 +114,15 @@ def get_booking(
         owner_customer_id=owner_customer,
         correlation_id=getattr(request.state, "correlation_id", None),
     )
-    return BookingResponse.model_validate(BookingService(session).get(booking_id))
+    booking = BookingService(session).get(booking_id)
+    if access.is_customer_view(principal, owner_customer):
+        return customer_booking_view(booking)
+    return BookingResponse.model_validate(booking)
 
 
 @router.get(
     "/trip-requests/{trip_request_id}/booking",
-    response_model=BookingResponse,
+    response_model=None,
     responses={403: _ERR, 404: _ERR},
     operation_id="getTripRequestBooking",
 )
@@ -125,9 +131,9 @@ def get_trip_booking(
     request: Request,
     principal: CurrentPrincipal,
     session: DatabaseSession,
-) -> BookingResponse:
+) -> BookingResponse | CustomerBookingView:
     owner = access.owner_of_trip(session, trip_request_id)
-    access.require_confidential_read(principal, Permission.BOOKING_READ, owner)
+    access.require_customer_access(principal, Permission.BOOKING_READ, owner)
     access.audit_platform_read(
         session,
         principal,
@@ -138,7 +144,10 @@ def get_trip_booking(
         owner_customer_id=owner,
         correlation_id=getattr(request.state, "correlation_id", None),
     )
-    return BookingResponse.model_validate(BookingService(session).get_for_trip(trip_request_id))
+    booking = BookingService(session).get_for_trip(trip_request_id)
+    if access.is_customer_view(principal, owner):
+        return customer_booking_view(booking)
+    return BookingResponse.model_validate(booking)
 
 
 @router.post(
@@ -206,7 +215,7 @@ def reject_booking(
 
 @router.post(
     "/bookings/{booking_id}/cancel",
-    response_model=BookingResponse,
+    response_model=None,
     responses={403: _ERR, 404: _ERR, 409: _ERR},
     operation_id="cancelBooking",
 )
@@ -216,10 +225,11 @@ def cancel_booking(
     request: Request,
     principal: CurrentPrincipal,
     session: DatabaseSession,
-) -> BookingResponse:
+) -> BookingResponse | CustomerBookingView:
     # Phase 9.0.A-1 secured the customer side (owner via booking→trip→customer);
     # Phase 9.0.A-2 adds the operator side (owner via Booking.operator_id,
     # booking.decide). Either owning tenant — or an audited platform actor — may cancel.
+    # The owning customer receives a customer-safe view (Phase 9.0.B); others → full.
     owner_customer = access.owner_of_booking(session, booking_id)
     owner_operator = access.operator_of_booking(session, booking_id)
     access.require_booking_cancel_access(
@@ -237,6 +247,7 @@ def cancel_booking(
         owner_customer_id=owner_customer,
         correlation_id=getattr(request.state, "correlation_id", None),
     )
-    return BookingResponse.model_validate(
-        BookingService(session).cancel(booking_id, data, on_commit=hook)
-    )
+    booking = BookingService(session).cancel(booking_id, data, on_commit=hook)
+    if access.is_customer_view(principal, owner_customer):
+        return customer_booking_view(booking)
+    return BookingResponse.model_validate(booking)

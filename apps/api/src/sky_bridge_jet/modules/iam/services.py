@@ -47,6 +47,7 @@ from sky_bridge_jet.modules.iam.models import (
     User,
     UserSession,
 )
+from sky_bridge_jet.modules.iam.provisioning import provision_personal_customer
 from sky_bridge_jet.modules.iam.repositories import (
     AuditRepository,
     EmailVerificationTokenRepository,
@@ -166,6 +167,10 @@ class AuthService:
                 user.status = UserStatus.ACTIVE
             user.email_verified_at = _utc_now()
             self.audit.record("email_verified", user_id=user.id)
+            # Phase 9.0.B: atomically provision a personal customer tenant for a normal
+            # self-registering individual (invitation / existing-membership paths take
+            # precedence; skipped for a non-active user). Same transaction → all-or-none.
+            provision_personal_customer(self.session, user)
             return user
 
     # -- Login / sessions --------------------------------------------------

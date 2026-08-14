@@ -30,8 +30,12 @@ class Disposition(StrEnum):
     PHASE_9_0A_1_BOUND = "PHASE_9_0A_1_BOUND"
     # Bound to operator-chain resource authorization (Phase 9.0.A-2).
     PHASE_9_0A_2_BOUND = "PHASE_9_0A_2_BOUND"
-    # Bound to payment operational authorization in this PR (Phase 9.0.A-3).
+    # Bound to payment operational authorization (Phase 9.0.A-3).
     PHASE_9_0A_3_BOUND = "PHASE_9_0A_3_BOUND"
+    # Customer provisioning & safe read models — the customer "my" list endpoints
+    # bound in this PR (Phase 9.0.B). Existing routes that gained a customer-safe
+    # projection keep their authorization-phase disposition; their notes record 9.0.B.
+    PHASE_9_0B_BOUND = "PHASE_9_0B_BOUND"
 
 
 @dataclass(frozen=True)
@@ -52,6 +56,7 @@ _AB = Disposition.ALREADY_BOUND
 _P1 = Disposition.PHASE_9_0A_1_BOUND
 _P2 = Disposition.PHASE_9_0A_2_BOUND
 _P3 = Disposition.PHASE_9_0A_3_BOUND
+_P0B = Disposition.PHASE_9_0B_BOUND
 
 ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
     # ---- Platform / documentation / discovery (public) --------------------
@@ -243,6 +248,10 @@ ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
         "platform (payment.refund)",
         "payment.refund unchanged; ADR-043 removed finance-reviewer grant",
     ),
+    # ---- Customer provisioning & safe read models — bound in THIS PR (9.0.B) ----
+    _p("GET", "/api/v1/me/trip-requests", _P0B, "customer (own; safe projection)"),
+    _p("GET", "/api/v1/me/bookings", _P0B, "customer (own; safe projection)"),
+    _p("GET", "/api/v1/me/payments", _P0B, "customer (own; safe status)"),
 )
 
 

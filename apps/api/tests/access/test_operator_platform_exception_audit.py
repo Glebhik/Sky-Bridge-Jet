@@ -21,7 +21,7 @@ from sky_bridge_jet.modules.access import PLATFORM_EXCEPTION_EVENT
 from sky_bridge_jet.modules.core_aviation.models import Aircraft
 from sky_bridge_jet.modules.core_aviation.schemas import AircraftCreate
 from sky_bridge_jet.modules.core_aviation.services import OperatorService
-from sky_bridge_jet.modules.iam.domain import OrganizationRole, OrganizationType
+from sky_bridge_jet.modules.iam.domain import OrganizationRole
 from sky_bridge_jet.modules.iam.models import AuthAuditLog
 
 requires_db = pytest.mark.skipif(
@@ -43,15 +43,9 @@ def _count(*, user_id: UUID | None = None) -> int:
 
 
 def _platform_owner() -> tuple[TestClient, UUID]:
-    client = iam_support.new_client()
-    user_id = iam_support.register_verify_login(client)
-    iam_support._grant_membership(
-        user_id,
-        organization_type=OrganizationType.PLATFORM,
-        role=OrganizationRole.PRODUCT_OWNER,
-        display_name="Sky Bridge Jet",
-    )
-    return client, user_id
+    # Grant precedes verification, so this platform product-owner has no auto-provisioned
+    # personal customer tenant (Phase 9.0.B).
+    return iam_support.product_owner_client_with_user()
 
 
 def _aircraft_count(operator_id: UUID) -> int:
