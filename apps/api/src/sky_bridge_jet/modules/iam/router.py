@@ -18,12 +18,16 @@ from sky_bridge_jet.modules.iam.domain import (
     IamConflictError,
     IamError,
     InvalidTokenError,
+    OrganizationRole,
+    OrganizationType,
     Permission,
     RateLimitedError,
 )
+from sky_bridge_jet.modules.iam.provisioning import recover_personal_customer
 from sky_bridge_jet.modules.iam.ratelimit import RateLimiter
 from sky_bridge_jet.modules.iam.schemas import (
     AcceptInvitationRequest,
+    AccountRecoveryResponse,
     ChangeRoleRequest,
     CreateOrganizationRequest,
     InvitationResponse,
@@ -50,6 +54,8 @@ _ERR = {"model": ErrorResponse}
 
 _login_limiter = RateLimiter(max_attempts=10, window_seconds=60)
 _reset_limiter = RateLimiter(max_attempts=5, window_seconds=60)
+# Account recovery is a rare, authenticated, tenant-creating action; keep the floor low.
+_recover_limiter = RateLimiter(max_attempts=5, window_seconds=60)
 
 
 def _client_key(request: Request, suffix: str) -> str:
@@ -307,6 +313,42 @@ def accept_invitation(
         principal.user_id, data.token
     )
     return MembershipResponse.model_validate(membership)
+
+
+# --------------------------------------------------------------------------- #
+# Customer-account recovery (authenticated self-service, Phase 9.1.A)
+# --------------------------------------------------------------------------- #
+@router.post(
+    "/auth/customer-account/recover",
+    response_model=AccountRecoveryResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={401: _ERR, 403: _ERR, 409: _ERR, 429: _ERR},
+    operation_id="recoverCustomerAccount",
+)
+def recover_customer_account(
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> AccountRecoveryResponse:
+    """Provision a personal customer tenant for an authenticated, stranded user.
+
+    Authentication and CSRF are enforced by the global gate (this is a non-public POST).
+    The caller supplies no body and no ownership identifiers: identity is the session
+    principal, and the tenant is created server-side (INDIVIDUAL customer, CUSTOMER
+    organization, CUSTOMER_OWNER membership) by the single shared provisioning path,
+    under a canonical user-row lock. Eligibility/denial and concurrency live in
+    :func:`recover_personal_customer`.
+    """
+    if not _recover_limiter.check(_client_key(request, f"recover:{principal.user_id}")):
+        raise RateLimitedError("Too many recovery attempts; please try again shortly")
+    organization = recover_personal_customer(session, principal.user_id)
+    assert organization.customer_id is not None  # a CUSTOMER org always links a customer
+    return AccountRecoveryResponse(
+        organization_id=organization.id,
+        customer_id=organization.customer_id,
+        organization_type=OrganizationType.CUSTOMER,
+        role=OrganizationRole.CUSTOMER_OWNER,
+    )
 
 
 # --------------------------------------------------------------------------- #
