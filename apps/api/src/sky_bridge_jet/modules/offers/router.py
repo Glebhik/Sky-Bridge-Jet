@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from sky_bridge_jet.db.session import get_db
 from sky_bridge_jet.modules import access
 from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
+from sky_bridge_jet.modules.customer_views import CustomerOfferView, customer_offer_view
 from sky_bridge_jet.modules.iam.dependencies import ActiveOrganization, CurrentPrincipal
 from sky_bridge_jet.modules.iam.domain import Permission
 from sky_bridge_jet.modules.offers.domain import OfferConflictError, effective_offer_status
@@ -240,7 +241,7 @@ def withdraw_offer(
 
 @router.get(
     "/trip-requests/{trip_request_id}/offers",
-    response_model=list[OperatorOfferResponse],
+    response_model=None,
     responses={403: _ERR, 404: _ERR},
     operation_id="listTripRequestOffers",
 )
@@ -249,12 +250,12 @@ def list_trip_offers(
     request: Request,
     principal: CurrentPrincipal,
     session: DatabaseSession,
-) -> list[OperatorOfferResponse]:
-    # The offer response still exposes platform_fee_minor / operator_amount_minor;
-    # until the Phase 9.0.B customer-safe projection lands, only a platform viewer
-    # receives it. Ownership (trip → customer) is still enforced for everyone.
+) -> list[OperatorOfferResponse] | list[CustomerOfferView]:
+    # Phase 9.0.B: the owning customer now receives a customer-safe projection; a
+    # platform viewer receives the full internal response (and is audited). Ownership
+    # (trip → customer) is enforced for everyone; cross-tenant is concealed as 404.
     owner = access.owner_of_trip(session, trip_request_id)
-    access.require_confidential_read(principal, Permission.OFFER_READ, owner)
+    access.require_customer_access(principal, Permission.OFFER_READ, owner)
     access.audit_platform_read(
         session,
         principal,
@@ -266,12 +267,14 @@ def list_trip_offers(
         correlation_id=getattr(request.state, "correlation_id", None),
     )
     offers = OperatorOfferService(session).list_for_trip(trip_request_id)
+    if access.is_customer_view(principal, owner):
+        return [customer_offer_view(offer) for offer in offers]
     return [_to_response(offer) for offer in offers]
 
 
 @router.post(
     "/trip-requests/{trip_request_id}/offers/{offer_id}/select",
-    response_model=OperatorOfferResponse,
+    response_model=None,
     responses={403: _ERR, 404: _ERR, 409: _ERR},
     operation_id="selectOperatorOffer",
 )
@@ -281,7 +284,7 @@ def select_offer(
     request: Request,
     principal: CurrentPrincipal,
     session: DatabaseSession,
-) -> OperatorOfferResponse:
+) -> OperatorOfferResponse | CustomerOfferView:
     owner = access.owner_of_trip(session, trip_request_id)
     access.require_customer_access(principal, Permission.TRIP_WRITE, owner)
     session.rollback()
@@ -295,6 +298,7 @@ def select_offer(
         correlation_id=getattr(request.state, "correlation_id", None),
     )
     # The service enforces that the offer belongs to the trip and is still selectable.
-    return _to_response(
-        OperatorOfferService(session).select(trip_request_id, offer_id, on_commit=hook)
-    )
+    offer = OperatorOfferService(session).select(trip_request_id, offer_id, on_commit=hook)
+    if access.is_customer_view(principal, owner):
+        return customer_offer_view(offer)
+    return _to_response(offer)

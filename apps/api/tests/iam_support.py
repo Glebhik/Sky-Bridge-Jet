@@ -11,6 +11,7 @@ module is importable as ``import iam_support`` from any test package.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -56,15 +57,31 @@ def integration_client() -> TestClient:
     return new_client()
 
 
-def register_verify_login(client: TestClient, *, email: str | None = None) -> UUID:
-    """Register, verify, and log a fresh user in; set its CSRF header. Returns id."""
+def register_verify_login(
+    client: TestClient,
+    *,
+    email: str | None = None,
+    before_verify: Callable[[UUID], None] | None = None,
+) -> UUID:
+    """Register, verify, and log a fresh user in; set its CSRF header. Returns id.
+
+    ``before_verify`` runs after registration but *before* email verification, so a
+    caller granting a platform/operator/specific-customer membership does so ahead of
+    verification — which makes Phase 9.0.B personal-customer self-provisioning skip that
+    user (existing-membership precedence), matching production where such users are
+    bootstrapped/invited rather than self-provisioned. Plain callers (no hook) get the
+    normal self-registering individual who is auto-provisioned a personal customer.
+    """
     email = email or f"user+{uuid4().hex[:10]}@example.com"
     reg = client.post("/api/v1/auth/register", json={"email": email, "password": _PASSWORD})
     assert reg.status_code == 201, reg.text
     body = reg.json()
+    user_id = UUID(body["user"]["id"])
+    if before_verify is not None:
+        before_verify(user_id)
     client.post("/api/v1/auth/verify-email", json={"token": body["verification_token"]})
     login(client, email)
-    return UUID(body["user"]["id"])
+    return user_id
 
 
 def login(client: TestClient, email: str, password: str = _PASSWORD) -> None:
@@ -95,6 +112,18 @@ def _grant_membership(
         return org.id
 
 
+def _platform_grant(role: OrganizationRole) -> Callable[[UUID], None]:
+    def _grant(user_id: UUID) -> None:
+        _grant_membership(
+            user_id,
+            organization_type=OrganizationType.PLATFORM,
+            role=role,
+            display_name="Sky Bridge Jet",
+        )
+
+    return _grant
+
+
 def platform_admin_client() -> TestClient:
     """An authenticated client whose user is a platform admin (broad access).
 
@@ -103,39 +132,29 @@ def platform_admin_client() -> TestClient:
     platform admins may coexist (unlike the single bootstrap product owner).
     """
     client = new_client()
-    user_id = register_verify_login(client)
-    _grant_membership(
-        user_id,
-        organization_type=OrganizationType.PLATFORM,
-        role=OrganizationRole.PLATFORM_ADMIN,
-        display_name="Sky Bridge Jet",
-    )
+    register_verify_login(client, before_verify=_platform_grant(OrganizationRole.PLATFORM_ADMIN))
     return client
 
 
 def product_owner_client() -> TestClient:
     """An authenticated product-owner client (all permissions)."""
-    client = new_client()
-    user_id = register_verify_login(client)
-    _grant_membership(
-        user_id,
-        organization_type=OrganizationType.PLATFORM,
-        role=OrganizationRole.PRODUCT_OWNER,
-        display_name="Sky Bridge Jet",
-    )
+    client, _ = product_owner_client_with_user()
     return client
+
+
+def product_owner_client_with_user() -> tuple[TestClient, UUID]:
+    """A product-owner client and its user id (grant precedes verify → no personal tenant)."""
+    client = new_client()
+    user_id = register_verify_login(
+        client, before_verify=_platform_grant(OrganizationRole.PRODUCT_OWNER)
+    )
+    return client, user_id
 
 
 def platform_role_client(role: OrganizationRole) -> TestClient:
     """An authenticated client holding a single platform role (least privilege)."""
     client = new_client()
-    user_id = register_verify_login(client)
-    _grant_membership(
-        user_id,
-        organization_type=OrganizationType.PLATFORM,
-        role=role,
-        display_name="Sky Bridge Jet",
-    )
+    register_verify_login(client, before_verify=_platform_grant(role))
     return client
 
 
@@ -169,42 +188,57 @@ def create_operator(admin_client: TestClient) -> UUID:
 
 
 def customer_owner_client(admin_client: TestClient, customer_id: UUID) -> tuple[TestClient, UUID]:
-    """A CUSTOMER_OWNER user bound to the given customer. Returns (client, org_id)."""
+    """A CUSTOMER_OWNER user bound to the given customer. Returns (client, org_id).
+
+    The membership is granted before verification so the user is bound only to this
+    specific customer (no additional auto-provisioned personal customer tenant).
+    """
     client = new_client()
-    user_id = register_verify_login(client)
-    org_id = _grant_membership(
-        user_id,
-        organization_type=OrganizationType.CUSTOMER,
-        role=OrganizationRole.CUSTOMER_OWNER,
-        customer_id=customer_id,
-        display_name="Customer Org",
-    )
-    return client, org_id
+    org_holder: dict[str, UUID] = {}
+
+    def _grant(user_id: UUID) -> None:
+        org_holder["org_id"] = _grant_membership(
+            user_id,
+            organization_type=OrganizationType.CUSTOMER,
+            role=OrganizationRole.CUSTOMER_OWNER,
+            customer_id=customer_id,
+            display_name="Customer Org",
+        )
+
+    register_verify_login(client, before_verify=_grant)
+    return client, org_holder["org_id"]
 
 
 def member_client_for_org(organization_id: UUID, role: OrganizationRole) -> TestClient:
     """Register a fresh user and add them to an EXISTING organization in ``role``."""
     client = new_client()
-    user_id = register_verify_login(client)
-    with SessionLocal() as session, session.begin():
-        session.add(
-            OrganizationMembership(user_id=user_id, organization_id=organization_id, role=role)
-        )
+
+    def _grant(user_id: UUID) -> None:
+        with SessionLocal() as session, session.begin():
+            session.add(
+                OrganizationMembership(user_id=user_id, organization_id=organization_id, role=role)
+            )
+
+    register_verify_login(client, before_verify=_grant)
     return client
 
 
 def operator_role_client(operator_id: UUID, role: OrganizationRole) -> tuple[TestClient, UUID]:
     """An operator-staff user bound to the given operator. Returns (client, org_id)."""
     client = new_client()
-    user_id = register_verify_login(client)
-    org_id = _grant_membership(
-        user_id,
-        organization_type=OrganizationType.OPERATOR,
-        role=role,
-        operator_id=operator_id,
-        display_name="Operator Org",
-    )
-    return client, org_id
+    org_holder: dict[str, UUID] = {}
+
+    def _grant(user_id: UUID) -> None:
+        org_holder["org_id"] = _grant_membership(
+            user_id,
+            organization_type=OrganizationType.OPERATOR,
+            role=role,
+            operator_id=operator_id,
+            display_name="Operator Org",
+        )
+
+    register_verify_login(client, before_verify=_grant)
+    return client, org_holder["org_id"]
 
 
 def suspend_user(user_id: UUID) -> None:

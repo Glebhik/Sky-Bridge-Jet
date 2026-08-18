@@ -207,8 +207,11 @@ def test_operator_organization_cannot_be_customer_context(admin: TestClient) -> 
 # --------------------------------------------------------------------------- #
 # Confidential reads (offers / bookings / payments)
 # --------------------------------------------------------------------------- #
+_CONFIDENTIAL_FIELDS = ("operator_amount_minor", "platform_fee_minor")
+
+
 @requires_db
-def test_confidential_reads_are_denied_to_customers_until_projection(
+def test_owning_customer_receives_safe_projection_platform_gets_full(
     admin: TestClient, airports: list
 ) -> None:
     import uuid
@@ -220,16 +223,19 @@ def test_confidential_reads_are_denied_to_customers_until_projection(
     booking_id = scenario["booking_id"]
     payment_id = scenario["payment_id"]
 
-    # Platform (admin/product owner) receives the full response.
-    assert admin.get(f"/api/v1/trip-requests/{trip_id}/offers").status_code == 200
-    assert admin.get(f"/api/v1/bookings/{booking_id}").status_code == 200
-    assert admin.get(f"/api/v1/payments/{payment_id}").status_code == 200
+    # Platform (admin/product owner) receives the full internal response (with the split).
+    assert admin.get(f"/api/v1/bookings/{booking_id}").json()["platform_fee_minor"] is not None
+    assert admin.get(f"/api/v1/payments/{payment_id}").json()["platform_fee_minor"] is not None
 
-    # The owning customer is temporarily denied (403) — no safe projection yet (9.0.B).
-    assert customer_client.get(f"/api/v1/trip-requests/{trip_id}/offers").status_code == 403
-    assert customer_client.get(f"/api/v1/bookings/{booking_id}").status_code == 403
-    assert customer_client.get(f"/api/v1/payments/{payment_id}").status_code == 403
-    assert customer_client.get(f"/api/v1/bookings/{booking_id}/payment").status_code == 403
+    # Phase 9.0.B: the owning customer now receives a customer-SAFE 200 with no split.
+    offers = customer_client.get(f"/api/v1/trip-requests/{trip_id}/offers")
+    booking = customer_client.get(f"/api/v1/bookings/{booking_id}")
+    payment = customer_client.get(f"/api/v1/payments/{payment_id}")
+    booking_payment = customer_client.get(f"/api/v1/bookings/{booking_id}/payment")
+    for resp in (offers, booking, payment, booking_payment):
+        assert resp.status_code == 200, resp.text
+        for field in _CONFIDENTIAL_FIELDS:
+            assert field not in resp.text
 
     # A different customer cannot even learn these exist → 404.
     other_client, _ = iam_support.customer_owner_client(admin, iam_support.create_customer(admin))
@@ -240,7 +246,7 @@ def test_confidential_reads_are_denied_to_customers_until_projection(
 
 @requires_db
 def test_full_responses_never_reach_a_customer_principal(admin: TestClient, airports: list) -> None:
-    """The customer never receives a body containing confidential fields."""
+    """The customer's safe 200 never contains confidential fields (Phase 9.0.B)."""
     import uuid
 
     scenario = iam_support.full_booking_scenario(admin, airports)
@@ -248,6 +254,6 @@ def test_full_responses_never_reach_a_customer_principal(admin: TestClient, airp
         admin, uuid.UUID(scenario["customer_id"])
     )
     response = customer_client.get(f"/api/v1/payments/{scenario['payment_id']}")
-    assert response.status_code == 403
+    assert response.status_code == 200
     assert "platform_fee_minor" not in response.text
     assert "operator_amount_minor" not in response.text

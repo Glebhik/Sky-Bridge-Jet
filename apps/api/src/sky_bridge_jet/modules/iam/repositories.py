@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from sky_bridge_jet.modules.iam.domain import MembershipStatus
+from sky_bridge_jet.modules.iam.domain import InvitationStatus, MembershipStatus
 from sky_bridge_jet.modules.iam.models import (
     AuthAuditLog,
     EmailVerificationToken,
@@ -196,6 +196,25 @@ class InvitationRepository:
                     OrganizationInvitation.organization_id == organization_id
                 )
             ).all()
+        )
+
+    def count_valid_pending_for_email(self, invited_email_normalized: str, *, now: datetime) -> int:
+        """Count still-valid (PENDING and unexpired) invitations for an email.
+
+        A positive count means the invitation path is authoritative and personal
+        customer self-provisioning must be skipped (Phase 9.0.B B).
+        """
+        return int(
+            self.session.scalar(
+                select(func.count())
+                .select_from(OrganizationInvitation)
+                .where(
+                    OrganizationInvitation.invited_email_normalized == invited_email_normalized,
+                    OrganizationInvitation.status == InvitationStatus.PENDING,
+                    OrganizationInvitation.expires_at > now,
+                )
+            )
+            or 0
         )
 
 

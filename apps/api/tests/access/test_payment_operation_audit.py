@@ -22,7 +22,7 @@ from sqlalchemy import func, select
 from sky_bridge_jet.db.session import SessionLocal
 from sky_bridge_jet.modules.access import PAYMENT_OPERATION_EVENT
 from sky_bridge_jet.modules.iam.dependencies import is_public_route
-from sky_bridge_jet.modules.iam.domain import OrganizationRole, OrganizationType
+from sky_bridge_jet.modules.iam.domain import OrganizationRole
 from sky_bridge_jet.modules.iam.models import AuthAuditLog
 from sky_bridge_jet.modules.payments.schemas import PaymentVoid
 from sky_bridge_jet.modules.payments.services import PaymentService
@@ -50,15 +50,8 @@ def _count(*, user_id: UUID | None = None) -> int:
 
 
 def _platform_owner() -> tuple[TestClient, UUID]:
-    client = iam_support.new_client()
-    user_id = iam_support.register_verify_login(client)
-    iam_support._grant_membership(
-        user_id,
-        organization_type=OrganizationType.PLATFORM,
-        role=OrganizationRole.PRODUCT_OWNER,
-        display_name="Sky Bridge Jet",
-    )
-    return client, user_id
+    # Grant precedes verification → no auto-provisioned personal customer (Phase 9.0.B).
+    return iam_support.product_owner_client_with_user()
 
 
 def _payment(admin: TestClient, airports: list) -> dict[str, Any]:

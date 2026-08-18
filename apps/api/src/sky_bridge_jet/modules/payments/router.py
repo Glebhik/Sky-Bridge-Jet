@@ -10,6 +10,10 @@ from sqlalchemy.orm import Session
 from sky_bridge_jet.db.session import get_db
 from sky_bridge_jet.modules import access
 from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
+from sky_bridge_jet.modules.customer_views import (
+    CustomerPaymentStatusView,
+    customer_payment_view,
+)
 from sky_bridge_jet.modules.iam.dependencies import CurrentPrincipal, require_permission
 from sky_bridge_jet.modules.iam.domain import Permission
 from sky_bridge_jet.modules.payments.domain import PaymentConflictError
@@ -160,7 +164,7 @@ def create_payment(
 
 @router.get(
     "/bookings/{booking_id}/payment",
-    response_model=PaymentResponse,
+    response_model=None,
     responses={403: _ERR, 404: _ERR},
     operation_id="getBookingPayment",
 )
@@ -169,12 +173,11 @@ def get_booking_payment(
     request: Request,
     principal: CurrentPrincipal,
     session: DatabaseSession,
-) -> PaymentResponse:
-    # PaymentResponse exposes platform_fee_minor / operator_amount_minor; the
-    # customer-safe payment-status projection is Phase 9.0.B. Platform viewers get the
-    # full response; ownership (payment→booking→trip→customer) is enforced.
+) -> PaymentResponse | CustomerPaymentStatusView:
+    # Phase 9.0.B: the owning customer receives a customer-safe payment *status* view; a
+    # platform viewer gets the full response (and is audited); cross-tenant → 404.
     owner = access.owner_of_booking(session, booking_id)
-    access.require_confidential_read(principal, Permission.PAYMENT_READ, owner)
+    access.require_customer_access(principal, Permission.PAYMENT_READ, owner)
     access.audit_platform_read(
         session,
         principal,
@@ -185,12 +188,15 @@ def get_booking_payment(
         owner_customer_id=owner,
         correlation_id=getattr(request.state, "correlation_id", None),
     )
-    return _payment(PaymentService(session).get_for_booking(booking_id))
+    payment = PaymentService(session).get_for_booking(booking_id)
+    if access.is_customer_view(principal, owner):
+        return customer_payment_view(payment)
+    return _payment(payment)
 
 
 @router.get(
     "/payments/{payment_id}",
-    response_model=PaymentResponse,
+    response_model=None,
     responses={403: _ERR, 404: _ERR},
     operation_id="getPayment",
 )
@@ -199,9 +205,9 @@ def get_payment(
     request: Request,
     principal: CurrentPrincipal,
     session: DatabaseSession,
-) -> PaymentResponse:
+) -> PaymentResponse | CustomerPaymentStatusView:
     owner = access.owner_of_payment(session, payment_id)
-    access.require_confidential_read(principal, Permission.PAYMENT_READ, owner)
+    access.require_customer_access(principal, Permission.PAYMENT_READ, owner)
     access.audit_platform_read(
         session,
         principal,
@@ -212,7 +218,10 @@ def get_payment(
         owner_customer_id=owner,
         correlation_id=getattr(request.state, "correlation_id", None),
     )
-    return _payment(PaymentService(session).get(payment_id))
+    payment = PaymentService(session).get(payment_id)
+    if access.is_customer_view(principal, owner):
+        return customer_payment_view(payment)
+    return _payment(payment)
 
 
 def _operation_hook(

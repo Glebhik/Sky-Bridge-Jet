@@ -173,7 +173,9 @@ def test_symmetric_b_cannot_access_a(admin: TestClient, airports: list) -> None:
     assert confidential.status_code == 404
     assert "platform_fee_minor" not in confidential.text
 
-    # And the owning customer A is (temporarily) 403 on the confidential path, proving
-    # the 403-vs-404 distinction is by tenant, not by resource existence.
-    assert a_client.get(f"/api/v1/payments/{a['payment_id']}").status_code == 403
+    # The owning customer A receives a customer-safe 200 (Phase 9.0.B) with no split,
+    # while a foreign resource stays 404 — the distinction is by tenant, not existence.
+    own_payment = a_client.get(f"/api/v1/payments/{a['payment_id']}")
+    assert own_payment.status_code == 200
+    assert "platform_fee_minor" not in own_payment.text
     assert a_client.get(f"/api/v1/customers/{uuid4()}").status_code == 404

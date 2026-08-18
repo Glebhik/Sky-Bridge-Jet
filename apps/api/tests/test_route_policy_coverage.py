@@ -23,9 +23,10 @@ from sky_bridge_jet.modules.route_policy import (
 
 def test_verified_route_counts() -> None:
     registered = enumerate_app_routes(app)
-    assert len(registered) == 80, sorted(registered)
+    # Phase 9.0.B adds three customer "my" list endpoints (80 → 83; 76 → 79 ops).
+    assert len(registered) == 83, sorted(registered)
     openapi_ops = {r for r in registered if r[1] not in DOCUMENTATION_ROUTES}
-    assert len(openapi_ops) == 76
+    assert len(openapi_ops) == 79
 
 
 def test_every_route_has_exactly_one_disposition() -> None:
@@ -88,6 +89,18 @@ def test_payment_operations_are_fully_bound_no_pending_remains() -> None:
     assert len(bound) == 6, sorted(bound)
     # The 9.0.A-3-pending disposition no longer exists; no pending payment route remains.
     assert not hasattr(Disposition, "PHASE_9_0A_3_PENDING")
+
+
+def test_customer_my_list_endpoints_are_bound() -> None:
+    """Phase 9.0.B binds exactly the three customer 'my' list endpoints; no pending."""
+    index = policy_index()
+    bound = [k for k, p in index.items() if p.disposition is Disposition.PHASE_9_0B_BOUND]
+    assert sorted(bound) == [
+        ("GET", "/api/v1/me/bookings"),
+        ("GET", "/api/v1/me/payments"),
+        ("GET", "/api/v1/me/trip-requests"),
+    ]
+    assert not any(d.value.endswith("PENDING") for d in Disposition)
 
 
 def test_coverage_detects_an_unclassified_route() -> None:

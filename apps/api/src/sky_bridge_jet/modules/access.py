@@ -81,6 +81,18 @@ def has_platform_permission(principal: Principal, permission: Permission) -> boo
     )
 
 
+def is_customer_view(principal: Principal, owner_customer_id: UUID | None) -> bool:
+    """Whether a response should be the customer-safe projection (Phase 9.0.B).
+
+    True when the principal owns the customer tenant via a CUSTOMER membership — an
+    ordinary customer sees only the safe view. A platform or operator viewer (who does
+    not own the customer tenant) receives the full internal response unchanged.
+    """
+    return owner_customer_id is not None and any(
+        m.customer_id == owner_customer_id for m in _customer_memberships(principal)
+    )
+
+
 def _sees_customer_tenant(principal: Principal, customer_id: UUID) -> bool:
     """Whether the principal may even know the customer tenant exists.
 
@@ -135,28 +147,6 @@ def require_customer_access(
         return
     if _sees_customer_tenant(principal, owner_customer_id):
         raise AuthorizationError("You are not permitted to perform this action")
-    raise ResourceNotFoundError("Resource was not found")
-
-
-def require_confidential_read(
-    principal: Principal, permission: Permission, owner_customer_id: UUID | None
-) -> None:
-    """Enforce a read whose existing response still leaks confidential fields.
-
-    Applies to offers/bookings/payments reads whose response exposes
-    ``operator_amount_minor`` / ``platform_fee_minor``. Until the approved
-    customer-safe projection lands in Phase 9.0.B, only a platform viewer (holding
-    the permission cross-tenant) receives the full response. An owning customer is
-    temporarily denied with 403 (visible context, no safe projection yet); any other
-    principal, or a cross-tenant probe, receives 404 so existence is concealed.
-    """
-    if owner_customer_id is None:
-        raise ResourceNotFoundError("Resource was not found")
-    if has_platform_permission(principal, permission):
-        return
-    if _sees_customer_tenant(principal, owner_customer_id):
-        # Owning customer: allowed to know it exists, but the full response is unsafe.
-        raise AuthorizationError("A customer-safe view of this resource is not yet available")
     raise ResourceNotFoundError("Resource was not found")
 
 
@@ -519,9 +509,10 @@ def require_booking_read_access(
     """Authorize a booking read from the operator side or the customer/platform side.
 
     A genuine owning operator (member of ``booking.operator_id``) is a party to the
-    booking and receives it. Everyone else falls to the Phase 9.0.A-1 confidential
-    policy: a platform viewer is allowed (and audited by the caller), an owning
-    customer gets 403 (no customer-safe projection yet), cross-tenant gets 404.
+    booking and receives the full response. Everyone else falls to the customer/platform
+    policy (Phase 9.0.B): the owning customer is allowed and served a customer-safe view
+    by the caller, a platform viewer is allowed the full response (and audited), and a
+    cross-tenant probe gets 404.
     """
     if owner_customer_id is None and owner_operator_id is None:
         raise ResourceNotFoundError("Resource was not found")
@@ -533,7 +524,7 @@ def require_booking_read_access(
         )
     ):
         return
-    require_confidential_read(principal, Permission.BOOKING_READ, owner_customer_id)
+    require_customer_access(principal, Permission.BOOKING_READ, owner_customer_id)
 
 
 # --------------------------------------------------------------------------- #
