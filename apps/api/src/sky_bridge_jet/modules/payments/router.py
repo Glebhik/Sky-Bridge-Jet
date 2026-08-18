@@ -9,11 +9,13 @@ from sqlalchemy.orm import Session
 
 from sky_bridge_jet.db.session import get_db
 from sky_bridge_jet.modules import access
-from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
-from sky_bridge_jet.modules.customer_views import (
-    CustomerPaymentStatusView,
-    customer_payment_view,
+from sky_bridge_jet.modules.audience import (
+    CustomerPaymentResponse,
+    InternalPaymentResponse,
+    PaymentAudienceResponse,
 )
+from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
+from sky_bridge_jet.modules.customer_views import customer_payment_view
 from sky_bridge_jet.modules.iam.dependencies import CurrentPrincipal, require_permission
 from sky_bridge_jet.modules.iam.domain import Permission
 from sky_bridge_jet.modules.payments.domain import PaymentConflictError
@@ -164,7 +166,7 @@ def create_payment(
 
 @router.get(
     "/bookings/{booking_id}/payment",
-    response_model=None,
+    response_model=PaymentAudienceResponse,
     responses={403: _ERR, 404: _ERR},
     operation_id="getBookingPayment",
 )
@@ -173,7 +175,7 @@ def get_booking_payment(
     request: Request,
     principal: CurrentPrincipal,
     session: DatabaseSession,
-) -> PaymentResponse | CustomerPaymentStatusView:
+) -> PaymentAudienceResponse:
     # Phase 9.0.B: the owning customer receives a customer-safe payment *status* view; a
     # platform viewer gets the full response (and is audited); cross-tenant → 404.
     owner = access.owner_of_booking(session, booking_id)
@@ -190,13 +192,13 @@ def get_booking_payment(
     )
     payment = PaymentService(session).get_for_booking(booking_id)
     if access.is_customer_view(principal, owner):
-        return customer_payment_view(payment)
-    return _payment(payment)
+        return CustomerPaymentResponse.model_validate(customer_payment_view(payment))
+    return InternalPaymentResponse.model_validate(payment)
 
 
 @router.get(
     "/payments/{payment_id}",
-    response_model=None,
+    response_model=PaymentAudienceResponse,
     responses={403: _ERR, 404: _ERR},
     operation_id="getPayment",
 )
@@ -205,7 +207,7 @@ def get_payment(
     request: Request,
     principal: CurrentPrincipal,
     session: DatabaseSession,
-) -> PaymentResponse | CustomerPaymentStatusView:
+) -> PaymentAudienceResponse:
     owner = access.owner_of_payment(session, payment_id)
     access.require_customer_access(principal, Permission.PAYMENT_READ, owner)
     access.audit_platform_read(
@@ -220,8 +222,8 @@ def get_payment(
     )
     payment = PaymentService(session).get(payment_id)
     if access.is_customer_view(principal, owner):
-        return customer_payment_view(payment)
-    return _payment(payment)
+        return CustomerPaymentResponse.model_validate(customer_payment_view(payment))
+    return InternalPaymentResponse.model_validate(payment)
 
 
 def _operation_hook(

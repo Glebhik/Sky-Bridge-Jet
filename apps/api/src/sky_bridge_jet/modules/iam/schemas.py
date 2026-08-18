@@ -136,6 +136,20 @@ class MembershipResponse(ApiModel):
     created_at: datetime
 
 
+class AccountRecoveryResponse(ApiModel):
+    """Minimal, safe result of a successful customer-account recovery (ADR-047).
+
+    Exposes only the identifiers the authenticated client needs to adopt its new
+    personal customer context — never audit, membership-internal, or foreign-tenant
+    detail. ``role`` is always ``CUSTOMER_OWNER`` and ``organization_type`` ``CUSTOMER``.
+    """
+
+    organization_id: UUID
+    customer_id: UUID
+    organization_type: OrganizationType
+    role: OrganizationRole
+
+
 class ChangeRoleRequest(ApiModel):
     role: OrganizationRole
 

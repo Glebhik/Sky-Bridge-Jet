@@ -10,10 +10,11 @@ Dispositions carry intent, not enforcement — enforcement lives in the routers/
 Pending dispositions mark work owned by an explicitly named later PR; a pending route
 is still protected by the global authentication gate (never anonymous).
 
-Canonical route set (documented normalization): the 76 OpenAPI operations plus the 4
+Canonical route set (documented normalization): the 80 OpenAPI operations plus the 4
 documentation/schema routes (`/docs`, `/docs/oauth2-redirect`, `/redoc`,
-`/openapi.json`) that Starlette serves outside the OpenAPI schema = 80 entries.
-HEAD/OPTIONS are ignored (auto-provided by Starlette).
+`/openapi.json`) that Starlette serves outside the OpenAPI schema = 84 entries.
+HEAD/OPTIONS are ignored (auto-provided by Starlette). Phase 9.1.A adds one operation:
+the authenticated customer-account recovery endpoint (79 → 80 ops; 83 → 84 entries).
 """
 
 from __future__ import annotations
@@ -36,6 +37,11 @@ class Disposition(StrEnum):
     # bound in this PR (Phase 9.0.B). Existing routes that gained a customer-safe
     # projection keep their authorization-phase disposition; their notes record 9.0.B.
     PHASE_9_0B_BOUND = "PHASE_9_0B_BOUND"
+    # Authenticated customer-account recovery — the self-service endpoint bound in this
+    # PR (Phase 9.1.A). The typed audience-aware contract work on the eight shared routes
+    # is schema-only and adds no route, so those keep their authorization-phase
+    # disposition (their notes record the 9.1.A typed contract).
+    PHASE_9_1A_BOUND = "PHASE_9_1A_BOUND"
 
 
 @dataclass(frozen=True)
@@ -57,6 +63,7 @@ _P1 = Disposition.PHASE_9_0A_1_BOUND
 _P2 = Disposition.PHASE_9_0A_2_BOUND
 _P3 = Disposition.PHASE_9_0A_3_BOUND
 _P0B = Disposition.PHASE_9_0B_BOUND
+_P1A = Disposition.PHASE_9_1A_BOUND
 
 ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
     # ---- Platform / documentation / discovery (public) --------------------
@@ -252,6 +259,14 @@ ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
     _p("GET", "/api/v1/me/trip-requests", _P0B, "customer (own; safe projection)"),
     _p("GET", "/api/v1/me/bookings", _P0B, "customer (own; safe projection)"),
     _p("GET", "/api/v1/me/payments", _P0B, "customer (own; safe status)"),
+    # ---- Customer-account recovery — bound in THIS PR (Phase 9.1.A) ------------
+    _p(
+        "POST",
+        "/api/v1/auth/customer-account/recover",
+        _P1A,
+        "customer-self",
+        "authenticated + CSRF + rate-limited; server-derived identity; never public",
+    ),
 )
 
 

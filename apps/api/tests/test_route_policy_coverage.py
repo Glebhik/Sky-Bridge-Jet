@@ -23,10 +23,11 @@ from sky_bridge_jet.modules.route_policy import (
 
 def test_verified_route_counts() -> None:
     registered = enumerate_app_routes(app)
-    # Phase 9.0.B adds three customer "my" list endpoints (80 → 83; 76 → 79 ops).
-    assert len(registered) == 83, sorted(registered)
+    # Phase 9.1.A adds one route — the authenticated customer-account recovery endpoint
+    # (83 → 84; 79 → 80 ops). The typed audience-aware contract work is schema-only.
+    assert len(registered) == 84, sorted(registered)
     openapi_ops = {r for r in registered if r[1] not in DOCUMENTATION_ROUTES}
-    assert len(openapi_ops) == 79
+    assert len(openapi_ops) == 80
 
 
 def test_every_route_has_exactly_one_disposition() -> None:
@@ -67,6 +68,8 @@ def test_no_versioned_pending_route_is_public() -> None:
         Disposition.PHASE_9_0A_1_BOUND,
         Disposition.PHASE_9_0A_2_BOUND,
         Disposition.PHASE_9_0A_3_BOUND,
+        Disposition.PHASE_9_0B_BOUND,
+        Disposition.PHASE_9_1A_BOUND,
         Disposition.ALREADY_BOUND,
     }
     for policy in ROUTE_POLICIES:
@@ -100,6 +103,16 @@ def test_customer_my_list_endpoints_are_bound() -> None:
         ("GET", "/api/v1/me/payments"),
         ("GET", "/api/v1/me/trip-requests"),
     ]
+    assert not any(d.value.endswith("PENDING") for d in Disposition)
+
+
+def test_customer_account_recovery_route_is_bound() -> None:
+    """Phase 9.1.A binds exactly the one authenticated recovery route; no pending."""
+    index = policy_index()
+    bound = [k for k, p in index.items() if p.disposition is Disposition.PHASE_9_1A_BOUND]
+    assert bound == [("POST", "/api/v1/auth/customer-account/recover")]
+    # A route under /auth must never be public merely because of its prefix.
+    assert not is_public_route("POST", "/api/v1/auth/customer-account/recover")
     assert not any(d.value.endswith("PENDING") for d in Disposition)
 
 

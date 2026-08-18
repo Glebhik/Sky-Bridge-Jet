@@ -293,6 +293,32 @@ class RateLimitedError(IamError):
     code = "rate_limited"
 
 
+class AccountRecoveryIneligibleError(AuthorizationError):
+    """The authenticated account cannot self-recover a customer tenant (403).
+
+    Raised when the locked user row is not ACTIVE (suspended/disabled/unverified). The
+    message is deliberately generic and reveals no foreign organization/invitation data.
+    """
+
+    code = "account_recovery_ineligible"
+
+
+class AccountAlreadyProvisionedError(IamConflictError):
+    """The account already has an active organization membership (409)."""
+
+    code = "account_already_provisioned"
+
+
+class PendingInvitationExistsError(IamConflictError):
+    """A valid pending invitation must be accepted before self-recovery (409).
+
+    Never discloses the inviting organization, issuer, or role — only that an
+    invitation action is pending for this account.
+    """
+
+    code = "pending_invitation_exists"
+
+
 # --------------------------------------------------------------------------- #
 # Value objects / validation
 # --------------------------------------------------------------------------- #
