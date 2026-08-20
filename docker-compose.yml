@@ -56,7 +56,13 @@ services:
       dockerfile: apps/web/Dockerfile
     command: pnpm --dir apps/web dev --hostname 0.0.0.0
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      # Server-only upstream API origin for the same-origin proxy. Inside the Compose
+      # network the API is the `api` service, not the web container's own localhost, so
+      # this defaults to http://api:8000. A Compose-specific interpolation variable
+      # (WEB_API_UPSTREAM_ORIGIN) is used deliberately so a developer's root `.env`
+      # (which sets API_UPSTREAM_ORIGIN=http://localhost:8000 for host-run Next) cannot
+      # leak localhost into the container and break the proxy. Never NEXT_PUBLIC_*.
+      API_UPSTREAM_ORIGIN: ${WEB_API_UPSTREAM_ORIGIN:-http://api:8000}
     depends_on:
       api:
         condition: service_healthy

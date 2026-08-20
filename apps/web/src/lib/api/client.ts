@@ -1,0 +1,163 @@
+import { ApiError, apiErrorFromResponse } from "@/lib/api/errors";
+import type {
+  AccountRecoveryResponse,
+  CustomerBooking,
+  CustomerPayment,
+  CustomerTripRequest,
+  LoginResponse,
+  MeResponse,
+  MessageResponse,
+} from "@/lib/api/types";
+
+/**
+ * The browser-side typed API client. It talks ONLY to the web app's own origin via the
+ * same-origin proxy (`/api/proxy/...`); it never knows the upstream API host. Session
+ * cookies ride along automatically (`credentials: "same-origin"`) and mutations attach the
+ * readable CSRF cookie as the `X-CSRF-Token` header. Every failure surfaces as a typed
+ * {@link ApiError} that preserves the upstream status (401/403/409/429/5xx) — nothing is
+ * silently swallowed or coerced to success.
+ */
+
+const PROXY_BASE = "/api/proxy";
+// Matches the API's default readable CSRF cookie (double-submit). Server-side validation
+// compares it to the session's stored secret, so this is only the transport.
+const CSRF_COOKIE = "sbj_csrf";
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+type Query = Record<string, string | number | undefined>;
+
+interface RequestOptions {
+  readonly method?: string;
+  readonly body?: unknown;
+  readonly query?: Query;
+  readonly signal?: AbortSignal;
+  /** The validated active customer-organization id, sent as `X-Organization-Id`. */
+  readonly organizationId?: string;
+}
+
+function readCsrfToken(): string | null {
+  if (typeof document === "undefined") return null;
+  for (const part of document.cookie.split(";")) {
+    const [name, ...rest] = part.trim().split("=");
+    if (name === CSRF_COOKIE) return decodeURIComponent(rest.join("="));
+  }
+  return null;
+}
+
+function buildPath(path: string, query?: Query): string {
+  const url = new URL(`${PROXY_BASE}/${path}`, "http://portal.local");
+  if (query) {
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined) url.searchParams.set(key, String(value));
+    }
+  }
+  return `${url.pathname}${url.search}`;
+}
+
+async function parseBody(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (text.length === 0) return undefined;
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    // A non-JSON body where JSON was expected is a malformed contract, not a value.
+    if (response.ok) {
+      throw new ApiError(
+        response.status,
+        "malformed_response",
+        "Malformed response.",
+        "malformed",
+      );
+    }
+    return undefined;
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new ApiError(
+      response.status,
+      "malformed_response",
+      "Malformed response.",
+      "malformed",
+    );
+  }
+}
+
+export async function apiRequest<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const method = (options.method ?? "GET").toUpperCase();
+  const headers = new Headers({ accept: "application/json" });
+  let body: string | undefined;
+  if (options.body !== undefined) {
+    headers.set("content-type", "application/json");
+    body = JSON.stringify(options.body);
+  }
+  if (UNSAFE_METHODS.has(method)) {
+    const csrf = readCsrfToken();
+    if (csrf !== null) headers.set("x-csrf-token", csrf);
+  }
+  if (options.organizationId !== undefined) {
+    headers.set("x-organization-id", options.organizationId);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(buildPath(path, options.query), {
+      method,
+      headers,
+      body,
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: options.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError")
+      throw error;
+    throw new ApiError(
+      0,
+      "network_error",
+      "Unable to reach the service.",
+      "network",
+    );
+  }
+
+  const parsed = await parseBody(response);
+  if (!response.ok) {
+    throw apiErrorFromResponse(response.status, parsed);
+  }
+  return parsed as T;
+}
+
+export const portalApi = {
+  getMe: (signal?: AbortSignal) =>
+    apiRequest<MeResponse>("auth/me", { signal }),
+  login: (email: string, password: string, signal?: AbortSignal) =>
+    apiRequest<LoginResponse>("auth/login", {
+      method: "POST",
+      body: { email, password },
+      signal,
+    }),
+  logout: (signal?: AbortSignal) =>
+    apiRequest<MessageResponse>("auth/logout", { method: "POST", signal }),
+  recoverCustomerAccount: (signal?: AbortSignal) =>
+    apiRequest<AccountRecoveryResponse>("auth/customer-account/recover", {
+      method: "POST",
+      signal,
+    }),
+  listTripRequests: (organizationId?: string, signal?: AbortSignal) =>
+    apiRequest<readonly CustomerTripRequest[]>("me/trip-requests", {
+      organizationId,
+      signal,
+    }),
+  listBookings: (organizationId?: string, signal?: AbortSignal) =>
+    apiRequest<readonly CustomerBooking[]>("me/bookings", {
+      organizationId,
+      signal,
+    }),
+  listPayments: (organizationId?: string, signal?: AbortSignal) =>
+    apiRequest<readonly CustomerPayment[]>("me/payments", {
+      organizationId,
+      signal,
+    }),
+};

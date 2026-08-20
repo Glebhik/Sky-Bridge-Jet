@@ -108,13 +108,25 @@ cross-boundary contract exists.
 7. Run the web shell in another terminal: `make dev-web`.
 
 The web app runs at <http://localhost:3000>; the API runs at
-<http://localhost:8000>. `NEXT_PUBLIC_API_BASE_URL` configures the browser-safe
-API base URL; it defaults to `http://localhost:8000`.
+<http://localhost:8000>. The browser talks only to the web app's own origin and the
+Next.js server proxies API calls from `/api/proxy/*` to the upstream API. That upstream
+origin is the **server-only** `API_UPSTREAM_ORIGIN` — it is read on the server, never
+prefixed `NEXT_PUBLIC_*`, and never reaches the browser bundle. For host development it
+defaults to `http://localhost:8000` (where `make dev-api` runs), so no configuration is
+needed.
 
-Alternatively, run the dev-focused container stack with `make dev`. The Compose
-API connects to the `db` service and the web service is available on port 3000.
-After the stack is healthy, apply migrations inside the API image with
-`make migrate-compose`, then load seed data with `make seed-airports-compose`.
+Alternatively, run the dev-focused container stack with `make dev`. The Compose API
+connects to the `db` service and the web service is available on port 3000. Inside the
+Compose network the API is reachable as the `api` service, not the web container's own
+localhost, so the web service sets `API_UPSTREAM_ORIGIN=http://api:8000` automatically
+(override with `WEB_API_UPSTREAM_ORIGIN` if needed); no browser-visible API-origin
+variable is required. After the stack is healthy, apply migrations inside the API image
+with `make migrate-compose`, then load seed data with `make seed-airports-compose`.
+
+In production, deployment must explicitly set the server-only `API_UPSTREAM_ORIGIN` to the
+API's origin. Use HTTPS whenever that connection crosses a host or untrusted network
+boundary; plain HTTP is acceptable only for a controlled private container/network hop
+such as `http://api:8000`. Never expose this value through a `NEXT_PUBLIC_*` variable.
 
 The values in `.env.example` are development examples only. The API, Alembic,
 and host-based Make targets read this repository-root `.env`. Docker Compose

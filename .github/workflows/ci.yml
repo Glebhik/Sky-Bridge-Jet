@@ -59,7 +59,6 @@ jobs:
           DATABASE_PORT: 55432
           API_PORT: 58000
           WEB_PORT: 53000
-          NEXT_PUBLIC_API_BASE_URL: http://localhost:58000
         run: |
           docker compose up -d --build --wait
           docker compose exec -T api /app/.venv/bin/alembic upgrade head
@@ -68,6 +67,12 @@ jobs:
           curl --fail --retry 5 --retry-connrefused http://127.0.0.1:58000/ready
           curl --fail --retry 5 --retry-connrefused http://127.0.0.1:58000/api/v1/airports | grep -F "EIDW"
           curl --fail --retry 5 --retry-connrefused http://127.0.0.1:53000/ | grep -F "Premium Private Aviation Marketplace"
+          # The web container reaches the API via the same-origin proxy (API_UPSTREAM_ORIGIN
+          # defaults to http://api:8000 inside Compose). An anonymous /auth/me must return the
+          # real API 401 — proving the proxy connected — and must NOT be 502 upstream_unavailable.
+          proxy_status="$(curl -s -o /dev/null -w '%{http_code}' --retry 5 --retry-connrefused http://127.0.0.1:53000/api/proxy/auth/me)"
+          echo "compose proxy /api/proxy/auth/me -> $proxy_status"
+          test "$proxy_status" = "401"
           ! docker compose logs api | grep -E "Downloading |Installed [0-9]+ packages|Resolved [0-9]+ packages"
       - name: Show Compose logs on failure
         if: failure()
