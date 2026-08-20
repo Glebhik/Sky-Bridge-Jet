@@ -513,6 +513,43 @@ h1 {
   outline: none;
 }
 
+/* ---------- Public Customer Portal demonstration ---------- */
+.demo-portal__identity,
+.demo-portal__organization {
+  display: flex;
+  flex-direction: column;
+}
+
+.demo-portal__label,
+.demo-portal__meta {
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+}
+
+.demo-portal__organization {
+  align-items: flex-end;
+}
+
+.demo-portal__banner,
+.demo-portal > .portal-main .card + .card,
+.demo-portal__dashboard-grid {
+  margin-top: 1.25rem;
+}
+
+.demo-portal__reference {
+  font-weight: 700;
+  margin: 0 0 0.5rem;
+}
+
+.demo-portal__meta {
+  margin: 0.25rem 0 0;
+}
+
+.demo-portal__disabled-action {
+  margin-top: 1.25rem;
+  width: 100%;
+}
+
 /* ---------- Auth page ---------- */
 .auth-page {
   align-items: center;
@@ -579,6 +616,10 @@ h1 {
 
   .portal-nav__link--active {
     border-left-color: var(--accent);
+  }
+
+  .demo-portal__organization {
+    display: none;
   }
 }
 
