@@ -4,9 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import DemoAccountPage from "@/app/demo/account/page";
 import DemoBookingsPage from "@/app/demo/bookings/page";
-import DemoLayout from "@/app/demo/layout";
+import DemoLayout, { metadata as demoMetadata } from "@/app/demo/layout";
 import DemoDashboardPage from "@/app/demo/page";
 import DemoOffersPage from "@/app/demo/offers/page";
+import { metadata as rootMetadata } from "@/app/layout";
 
 let currentPath = "/demo";
 const apiClientImported = vi.fn();
@@ -109,5 +110,28 @@ describe("public demonstration route family", () => {
     });
     expect(actions).toHaveLength(2);
     for (const action of actions) expect(action).toBeDisabled();
+  });
+});
+
+describe("demo search-indexing hardening", () => {
+  it("marks the whole /demo tree noindex, nofollow (incl. Googlebot)", () => {
+    const robots = demoMetadata.robots;
+    expect(robots).not.toBeNull();
+    expect(typeof robots).toBe("object");
+    const directive = robots as {
+      index?: boolean;
+      follow?: boolean;
+      googleBot?: { index?: boolean; follow?: boolean };
+    };
+    expect(directive.index).toBe(false);
+    expect(directive.follow).toBe(false);
+    expect(directive.googleBot?.index).toBe(false);
+    expect(directive.googleBot?.follow).toBe(false);
+  });
+
+  it("does not apply demo robots directives to the root (/, /login, /portal) layout", () => {
+    // The robots directive lives only on the /demo layout subtree; the root layout that
+    // wraps `/`, `/login`, and `/portal` must not carry a noindex directive.
+    expect(rootMetadata.robots ?? null).toBeNull();
   });
 });

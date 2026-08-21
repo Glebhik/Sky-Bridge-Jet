@@ -43,6 +43,16 @@ the Vercel account or deploy anything.
 To disable the demo immediately, set `DEMO_PORTAL_ENABLED=false` (or remove it) for the
 affected Vercel environment and redeploy. The route then fails closed with 404.
 
+## Search-indexing policy
+
+The demonstration is **never** meant for public search indexing, even when the feature flag
+is deliberately enabled. The `/demo` layout exports Next.js `robots` metadata
+(`index: false`, `follow: false`, plus the Googlebot equivalent), so every enabled demo
+route emits `<meta name="robots" content="noindex, nofollow">` (and the matching
+`googlebot` tag). Because the directive lives only on the `/demo` layout subtree, the public
+landing (`/`), `/login`, and the authenticated `/portal` are unaffected and carry no such
+directive. When the flag is off the routes are 404 and are not indexable regardless.
+
 ## Synthetic-data policy
 
 All demonstration objects live in `apps/web/src/lib/demo/fixtures.ts`. Identifiers use the
