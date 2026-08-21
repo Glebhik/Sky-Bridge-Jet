@@ -1,30 +1,39 @@
-import { Badge, Card, PageHeading } from "@/components/ui/primitives";
+import { RouteDisplay } from "@/components/demo/RouteDisplay";
+import { StatusMark } from "@/components/demo/StatusMark";
 import { demoFixtures } from "@/lib/demo/fixtures";
 
 export default function DemoBookingsPage() {
   return (
     <>
-      <PageHeading
-        title="Bookings"
-        description="Synthetic status cards for presentation only."
-      />
-      <ul className="resource-list">
+      <header className="sbj-page-head">
+        <p className="sbj-kicker">Bookings</p>
+        <h1>Bookings</h1>
+        <p>Synthetic status cards for presentation only.</p>
+      </header>
+      <ol className="sbj-list">
         {demoFixtures.bookings.map((booking) => (
           <li key={booking.id}>
-            <Card as="article">
-              <div className="resource-list__row">
-                <div>
-                  <p className="demo-portal__reference">{booking.id}</p>
-                  <p>{booking.route}</p>
-                  <p className="demo-portal__meta">{booking.departure}</p>
-                  <p className="demo-portal__meta">{booking.tripId}</p>
-                </div>
-                <Badge tone={booking.tone}>{booking.status}</Badge>
+            <article className="sbj-panel">
+              <p className="sbj-id">{booking.id}</p>
+              <RouteDisplay
+                origin={booking.origin}
+                destination={booking.destination}
+              />
+              <p className="sbj-meta">
+                <span>{booking.departure}</span>
+                <span>{booking.passengers} passengers</span>
+                <span>{booking.aircraftCategory}</span>
+                <span>{booking.organization}</span>
+                <span>{booking.tripId}</span>
+              </p>
+              <div className="sbj-meta">
+                <StatusMark status={booking.status} tone={booking.tone} />
+                <span className="sbj-readonly">Read-only</span>
               </div>
-            </Card>
+            </article>
           </li>
         ))}
-      </ul>
+      </ol>
     </>
   );
 }
