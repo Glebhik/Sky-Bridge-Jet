@@ -3,10 +3,7 @@ import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { DemoPortalShell } from "@/components/demo/DemoPortalShell";
-import {
-  DEMO_NAV_DESKTOP_LABEL,
-  DEMO_NAV_MOBILE_LABEL,
-} from "@/lib/demo/copy";
+import { DEMO_NAV_DESKTOP_LABEL, DEMO_NAV_MOBILE_LABEL } from "@/lib/demo/copy";
 
 let currentPath = "/demo/bookings";
 

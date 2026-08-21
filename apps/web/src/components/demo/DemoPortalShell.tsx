@@ -31,7 +31,10 @@ export function DemoPortalShell({ children }: { children: ReactNode }) {
       <div className="sbj-demo__frame">
         <aside className="sbj-demo__rail">
           <BrandLockup />
-          <nav aria-label={DEMO_NAV_DESKTOP_LABEL} className="sbj-demo__rail-nav">
+          <nav
+            aria-label={DEMO_NAV_DESKTOP_LABEL}
+            className="sbj-demo__rail-nav"
+          >
             <NavList pathname={pathname} variant="rail" />
           </nav>
           <div className="sbj-demo__rail-foot">
