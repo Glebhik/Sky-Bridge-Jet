@@ -7,6 +7,8 @@ import type {
   LoginResponse,
   MeResponse,
   MessageResponse,
+  RegistrationResponse,
+  User,
 } from "@/lib/api/types";
 
 /**
@@ -132,10 +134,44 @@ export async function apiRequest<T>(
 export const portalApi = {
   getMe: (signal?: AbortSignal) =>
     apiRequest<MeResponse>("auth/me", { signal }),
+  register: (email: string, password: string, signal?: AbortSignal) =>
+    apiRequest<RegistrationResponse>("auth/register", {
+      method: "POST",
+      body: { email, password },
+      signal,
+    }),
+  verifyEmail: (token: string, signal?: AbortSignal) =>
+    apiRequest<User>("auth/verify-email", {
+      method: "POST",
+      body: { token },
+      signal,
+    }),
+  resendVerification: (email: string, signal?: AbortSignal) =>
+    apiRequest<MessageResponse>("auth/verification/resend", {
+      method: "POST",
+      body: { email },
+      signal,
+    }),
   login: (email: string, password: string, signal?: AbortSignal) =>
     apiRequest<LoginResponse>("auth/login", {
       method: "POST",
       body: { email, password },
+      signal,
+    }),
+  requestPasswordReset: (email: string, signal?: AbortSignal) =>
+    apiRequest<MessageResponse>("auth/password-reset", {
+      method: "POST",
+      body: { email },
+      signal,
+    }),
+  confirmPasswordReset: (
+    token: string,
+    password: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<MessageResponse>("auth/password-reset/confirm", {
+      method: "POST",
+      body: { token, password },
       signal,
     }),
   logout: (signal?: AbortSignal) =>

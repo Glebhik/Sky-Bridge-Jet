@@ -38,6 +38,24 @@ export interface MeResponse {
   readonly permissions: readonly string[];
 }
 
+/** The `/auth/register` request contract (Phase 9.2.A). Profile data is out of scope. */
+export interface RegisterRequest {
+  readonly email: string;
+  readonly password: string;
+}
+
+/**
+ * The `/auth/register` success contract (RegistrationResponse).
+ *
+ * `verification_token` is a development-only affordance the API returns solely outside
+ * production (it is `null` in production, where delivery happens by email). Portal UI must
+ * never depend on it; it exists here only to mirror the real contract.
+ */
+export interface RegistrationResponse {
+  readonly user: User;
+  readonly verification_token: string | null;
+}
+
 /** The `/auth/login` success contract (LoginResponse). */
 export interface LoginResponse {
   readonly user: User;

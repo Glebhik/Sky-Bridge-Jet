@@ -154,6 +154,37 @@ class AuthService:
         )
         return raw
 
+    def resend_verification(self, email: str) -> str | None:
+        """Re-issue an email-verification token for an eligible pending account.
+
+        Enumeration-safe by construction: the caller (HTTP layer) always returns the
+        same public acknowledgement, and this method returns a raw token *only* for the
+        single eligible case — a still-``PENDING_VERIFICATION`` account. A malformed or
+        unknown email, or an ACTIVE/SUSPENDED/DISABLED account, returns ``None`` with no
+        state change and no distinguishable side effect. The raw token is returned solely
+        for the future Phase 9.2.B ``AuthEmailSender`` boundary; it is never surfaced by
+        the HTTP response and never logged. Membership and customer tenancy are never
+        touched. Any previously issued, still-unused verification token for the user is
+        invalidated first, so at most one verification path is ever current.
+        """
+        try:
+            normalized = normalize_email(email)
+        except Exception:
+            return None
+        with self.session.begin():
+            found = self.users.get_by_normalized_email(normalized)
+            if found is None:
+                return None
+            # Lock the canonical user row so concurrent resends serialize and cannot
+            # each leave a distinct live token; re-check status under the lock.
+            user = self.users.get_for_update(found.id)
+            if user is None or user.status is not UserStatus.PENDING_VERIFICATION:
+                return None
+            self.email_tokens.consume_all_unconsumed_for_user(user.id, now=_utc_now())
+            raw_token = self._issue_verification_token(user.id)
+            self.audit.record("verification_resent", user_id=user.id)
+            return raw_token
+
     def verify_email(self, raw_token: str) -> User:
         with self.session.begin():
             record = self.email_tokens.get_by_hash(hash_token(raw_token))
@@ -283,9 +314,18 @@ class AuthService:
                 raise InvalidTokenError("The reset link is invalid or has expired")
             user.password_hash = hash_password(new_password)
             if user.status is UserStatus.PENDING_VERIFICATION:
-                # Completing a reset also proves email control.
+                # Completing a reset also proves email control, so the account is
+                # activated exactly as email verification would. To keep the two
+                # trusted email-control paths consistent, run the *same* canonical
+                # personal-customer provisioning here (Phase 9.2.A). It is idempotent
+                # and honours invitation / existing-membership precedence, all inside
+                # this transaction under the already-held user-row lock — so an invited
+                # user is not given a personal tenant, and an already-provisioned user
+                # is never duplicated. A reset for an already-ACTIVE user does not reach
+                # this branch, so a mere password change never creates tenancy.
                 user.status = UserStatus.ACTIVE
                 user.email_verified_at = _utc_now()
+                provision_personal_customer(self.session, user)
             # Reset invalidates all existing sessions.
             self.sessions.revoke_all_for_user(user.id)
             self.audit.record("password_reset_completed", user_id=user.id)

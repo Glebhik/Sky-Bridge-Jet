@@ -105,3 +105,64 @@ describe("apiRequest — success and typed errors", () => {
     expect(headers.get("x-organization-id")).toBe("org-42");
   });
 });
+
+describe("portalApi — Phase 9.2.A account-entry methods", () => {
+  it("POSTs each account-entry contract to its exact same-origin proxy path", async () => {
+    const cases: Array<[string, () => Promise<unknown>, unknown]> = [
+      [
+        "/api/proxy/auth/register",
+        () => portalApi.register("a@b.co", "PasswordLong12"),
+        {
+          email: "a@b.co",
+          password: "PasswordLong12",
+        },
+      ],
+      [
+        "/api/proxy/auth/verify-email",
+        () => portalApi.verifyEmail("tok"),
+        {
+          token: "tok",
+        },
+      ],
+      [
+        "/api/proxy/auth/verification/resend",
+        () => portalApi.resendVerification("a@b.co"),
+        { email: "a@b.co" },
+      ],
+      [
+        "/api/proxy/auth/password-reset",
+        () => portalApi.requestPasswordReset("a@b.co"),
+        { email: "a@b.co" },
+      ],
+      [
+        "/api/proxy/auth/password-reset/confirm",
+        () => portalApi.confirmPasswordReset("tok", "PasswordLong12"),
+        { token: "tok", password: "PasswordLong12" },
+      ],
+    ];
+    for (const [expectedUrl, call, expectedBody] of cases) {
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(jsonResponse({ message: "ok" }));
+      await call();
+      const [url, init] = fetchSpy.mock.calls[0];
+      expect(String(url)).toBe(expectedUrl);
+      expect(init?.method).toBe("POST");
+      expect(init?.credentials).toBe("same-origin");
+      expect(JSON.parse(String(init?.body))).toEqual(expectedBody);
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("never stores credentials or tokens in browser storage", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(
+        jsonResponse({ user: { id: "1" }, verification_token: null }),
+      ),
+    );
+    await portalApi.register("a@b.co", "PasswordLong12");
+    await portalApi.confirmPasswordReset("tok", "PasswordLong12");
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
+  });
+});

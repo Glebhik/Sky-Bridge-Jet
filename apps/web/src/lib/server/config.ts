@@ -20,15 +20,22 @@ export const UPSTREAM_API_PREFIX = "/api/v1";
  * The explicit allow-list of upstream API paths the portal proxy may reach, keyed by the
  * path *relative to* {@link UPSTREAM_API_PREFIX} and the HTTP methods permitted for each.
  * This is a closed policy — anything not listed is rejected — so the proxy can never be
- * used as a general-purpose or open proxy. Only the customer-portal-shell surface for
- * Phase 9.1.B is included (session, login/logout, explicit account recovery, and the
- * customer "my" reads that back the shell's honest empty/loading states).
+ * used as a general-purpose or open proxy. It carries the customer-portal-shell surface
+ * from Phase 9.1.B (session, login/logout, explicit account recovery, and the customer
+ * "my" reads) plus the Phase 9.2.A public account-entry contracts (register, verify,
+ * verification resend, and password-reset request/confirm). Every entry is an exact path;
+ * there is no `auth/*` wildcard and no dynamic passthrough.
  */
 export const PROXY_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   "auth/me": ["GET"],
+  "auth/register": ["POST"],
+  "auth/verify-email": ["POST"],
+  "auth/verification/resend": ["POST"],
   "auth/login": ["POST"],
   "auth/logout": ["POST"],
   "auth/logout-all": ["POST"],
+  "auth/password-reset": ["POST"],
+  "auth/password-reset/confirm": ["POST"],
   "auth/customer-account/recover": ["POST"],
   "me/trip-requests": ["GET"],
   "me/bookings": ["GET"],

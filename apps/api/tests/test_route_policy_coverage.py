@@ -23,11 +23,12 @@ from sky_bridge_jet.modules.route_policy import (
 
 def test_verified_route_counts() -> None:
     registered = enumerate_app_routes(app)
-    # Phase 9.1.A adds one route — the authenticated customer-account recovery endpoint
-    # (83 → 84; 79 → 80 ops). The typed audience-aware contract work is schema-only.
-    assert len(registered) == 84, sorted(registered)
+    # Phase 9.1.A added one route — the authenticated customer-account recovery endpoint
+    # (83 → 84; 79 → 80 ops). Phase 9.2.A adds one public route — the enumeration-safe
+    # verification-resend endpoint (84 → 85; 80 → 81 ops).
+    assert len(registered) == 85, sorted(registered)
     openapi_ops = {r for r in registered if r[1] not in DOCUMENTATION_ROUTES}
-    assert len(openapi_ops) == 80
+    assert len(openapi_ops) == 81
 
 
 def test_every_route_has_exactly_one_disposition() -> None:

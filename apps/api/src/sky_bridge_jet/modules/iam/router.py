@@ -43,6 +43,7 @@ from sky_bridge_jet.modules.iam.schemas import (
     PasswordResetRequest,
     RegisterRequest,
     RegistrationResponse,
+    ResendVerificationRequest,
     SetUserStatusRequest,
     UserResponse,
     VerifyEmailRequest,
@@ -56,6 +57,12 @@ _login_limiter = RateLimiter(max_attempts=10, window_seconds=60)
 _reset_limiter = RateLimiter(max_attempts=5, window_seconds=60)
 # Account recovery is a rare, authenticated, tenant-creating action; keep the floor low.
 _recover_limiter = RateLimiter(max_attempts=5, window_seconds=60)
+# Registration and verification-resend both do expensive/persistent work for anonymous
+# callers, so they get a conservative per-IP floor (Phase 9.2.A). Like the others, this
+# in-process fixed-window limiter is an application-level baseline, not a distributed
+# anti-abuse platform; production still fronts these endpoints with a reverse-proxy/WAF.
+_register_limiter = RateLimiter(max_attempts=5, window_seconds=60)
+_resend_limiter = RateLimiter(max_attempts=5, window_seconds=60)
 
 
 def _client_key(request: Request, suffix: str) -> str:
@@ -171,13 +178,44 @@ def register_iam_exception_handlers(app: object) -> None:
     operation_id="registerUser",
 )
 def register(
-    data: RegisterRequest, session: DatabaseSession, settings: AppSettings
+    data: RegisterRequest,
+    request: Request,
+    session: DatabaseSession,
+    settings: AppSettings,
 ) -> RegistrationResponse:
+    # Enforce the per-IP floor *before* the expensive Argon2 hash / persistent write, and
+    # key it on IP only (never the email) so a denial reveals nothing about any account.
+    if not _register_limiter.check(_client_key(request, "register")):
+        raise RateLimitedError("Too many registration attempts; please try again shortly")
     user, token = AuthService(session, settings).register(
         email=data.email, password=data.password, display_name=data.display_name
     )
     return RegistrationResponse(
         user=UserResponse.model_validate(user), verification_token=_dev_token(settings, token)
+    )
+
+
+@router.post(
+    "/auth/verification/resend",
+    response_model=MessageResponse,
+    responses={429: _ERR},
+    operation_id="resendVerification",
+)
+def resend_verification(
+    data: ResendVerificationRequest,
+    request: Request,
+    session: DatabaseSession,
+    settings: AppSettings,
+) -> MessageResponse:
+    if not _resend_limiter.check(_client_key(request, "resend")):
+        raise RateLimitedError("Too many requests; please try again shortly")
+    # Enumeration-safe: the service issues a token only for an eligible pending account,
+    # but the public response is identical in every case and never carries the token. The
+    # raw token is intentionally discarded here — the Phase 9.2.B AuthEmailSender boundary
+    # will consume the service return value to deliver the message.
+    AuthService(session, settings).resend_verification(data.email)
+    return MessageResponse(
+        message="If the account requires verification, verification instructions have been sent"
     )
 
 

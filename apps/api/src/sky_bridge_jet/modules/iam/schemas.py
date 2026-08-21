@@ -39,6 +39,10 @@ class VerifyEmailRequest(ApiModel):
     token: Token
 
 
+class ResendVerificationRequest(ApiModel):
+    email: EmailStr
+
+
 class PasswordResetRequest(ApiModel):
     email: EmailStr
 
