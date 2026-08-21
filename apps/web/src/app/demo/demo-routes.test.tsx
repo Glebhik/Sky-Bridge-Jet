@@ -8,6 +8,12 @@ import DemoLayout, { metadata as demoMetadata } from "@/app/demo/layout";
 import DemoDashboardPage from "@/app/demo/page";
 import DemoOffersPage from "@/app/demo/offers/page";
 import { metadata as rootMetadata } from "@/app/layout";
+import {
+  DEMO_METADATA_DESCRIPTION,
+  DEMO_METADATA_TITLE,
+  DEMO_OFFER_INERT_LABEL,
+  DEMO_OFFER_READ_ONLY_LABEL,
+} from "@/lib/demo/copy";
 
 let currentPath = "/demo";
 const apiClientImported = vi.fn();
@@ -103,13 +109,29 @@ describe("public demonstration route family", () => {
     expect(sessionBootstrapImported).not.toHaveBeenCalled();
   });
 
-  it("keeps every offer action visibly disabled and demo-only", () => {
+  it("contains no offer action control and keeps demonstration-only explanation", () => {
     renderEnabledRoute("/demo/offers", <DemoOffersPage />);
-    const actions = screen.getAllByRole("button", {
-      name: "Demo only — selection unavailable",
-    });
-    expect(actions).toHaveLength(2);
-    for (const action of actions) expect(action).toBeDisabled();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.getAllByText(DEMO_OFFER_READ_ONLY_LABEL)).toHaveLength(2);
+    expect(screen.getAllByText(DEMO_OFFER_INERT_LABEL)).toHaveLength(2);
+  });
+
+  it("does not present transactional action labels", () => {
+    renderEnabledRoute("/demo", <DemoDashboardPage />);
+    const page = document.body.textContent ?? "";
+    for (const label of [
+      "Request a flight",
+      "Create request",
+      "Book now",
+      "Pay",
+      "Confirm booking",
+      "Select offer",
+      "Accept offer",
+      "Reserve",
+      "Save profile",
+    ]) {
+      expect(page.toLowerCase()).not.toContain(label.toLowerCase());
+    }
   });
 });
 
@@ -127,6 +149,23 @@ describe("demo search-indexing hardening", () => {
     expect(directive.follow).toBe(false);
     expect(directive.googleBot?.index).toBe(false);
     expect(directive.googleBot?.follow).toBe(false);
+  });
+
+  it("overrides inherited marketing metadata for the /demo tree", () => {
+    expect(demoMetadata.title).toBe(DEMO_METADATA_TITLE);
+    expect(demoMetadata.description).toBe(DEMO_METADATA_DESCRIPTION);
+    expect(JSON.stringify(demoMetadata)).not.toContain(
+      "Premium Private Aviation Marketplace",
+    );
+    const robots = demoMetadata.robots as {
+      index?: boolean;
+      follow?: boolean;
+      googleBot?: { index?: boolean; follow?: boolean };
+    };
+    expect(robots.index).toBe(false);
+    expect(robots.follow).toBe(false);
+    expect(robots.googleBot?.index).toBe(false);
+    expect(robots.googleBot?.follow).toBe(false);
   });
 
   it("does not apply demo robots directives to the root (/, /login, /portal) layout", () => {

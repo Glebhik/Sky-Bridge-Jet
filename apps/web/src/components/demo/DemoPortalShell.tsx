@@ -2,106 +2,93 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useId, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
-import { Alert, Container } from "@/components/ui/primitives";
-import { DEMO_DATA_BANNER, demoFixtures } from "@/lib/demo/fixtures";
-
-const DEMO_NAV_ITEMS = [
-  { href: "/demo", label: "Dashboard" },
-  { href: "/demo/bookings", label: "Bookings" },
-  { href: "/demo/offers", label: "Offers" },
-  { href: "/demo/account", label: "Account" },
-] as const;
-
-function isActive(pathname: string, href: string): boolean {
-  return href === "/demo"
-    ? pathname === href
-    : pathname === href || pathname.startsWith(`${href}/`);
-}
+import { Atmosphere } from "@/components/demo/Atmosphere";
+import { BrandLockup } from "@/components/demo/BrandLockup";
+import { DemoNotice } from "@/components/demo/DemoNotice";
+import {
+  DEMO_NAV_DESKTOP_LABEL,
+  DEMO_NAV_MOBILE_LABEL,
+  DEMO_READ_ONLY_LABEL,
+} from "@/lib/demo/copy";
+import { demoFixtures } from "@/lib/demo/fixtures";
+import { DEMO_NAV_ITEMS, isDemoNavActive } from "@/lib/demo/navigation";
 
 /**
- * A presentational shell exclusively for the public synthetic demonstration. It has no
- * session provider, organization provider, authentication cookie access, API client, or
- * persistence. Its only client state controls the accessible mobile navigation menu.
+ * Presentational shell for the public synthetic demonstration only. It has no session
+ * provider, organization provider, authentication cookie access, API client, or persistence.
  */
 export function DemoPortalShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/demo";
-  const [menuOpen, setMenuOpen] = useState(false);
-  const navPanelId = useId();
 
   return (
-    <div className="portal demo-portal">
-      <a className="skip-link" href="#demo-main">
+    <div className="sbj-demo">
+      <Atmosphere />
+      <a className="sbj-demo__skip" href="#demo-main">
         Skip to main content
       </a>
-      <header className="portal-header">
-        <div className="portal-header__bar">
-          <div className="demo-portal__identity">
-            <Link href="/demo" className="brand portal-header__brand">
-              Sky Bridge Jet
-            </Link>
-            <span className="demo-portal__label">
-              Customer Portal Demonstration
-            </span>
+      <div className="sbj-demo__frame">
+        <aside className="sbj-demo__rail">
+          <BrandLockup />
+          <nav aria-label={DEMO_NAV_DESKTOP_LABEL} className="sbj-demo__rail-nav">
+            <NavList pathname={pathname} variant="rail" />
+          </nav>
+          <div className="sbj-demo__rail-foot">
+            <strong>{demoFixtures.customer.name}</strong>
+            <span>{demoFixtures.customer.organization}</span>
+            <span className="sbj-demo__chip">{DEMO_READ_ONLY_LABEL}</span>
           </div>
-          <button
-            type="button"
-            className="portal-header__menu-toggle"
-            aria-expanded={menuOpen}
-            aria-controls={navPanelId}
-            aria-label={
-              menuOpen ? "Close navigation menu" : "Open navigation menu"
-            }
-            onClick={() => setMenuOpen((open) => !open)}
-          >
-            <span aria-hidden="true">{menuOpen ? "✕" : "☰"}</span>
-          </button>
-          <div
-            className="demo-portal__organization"
-            aria-label="Active organization"
-          >
-            <span className="org-switcher__label">
-              Demonstration organization
-            </span>
-            <span className="org-switcher__value">
-              {demoFixtures.customer.organization}
-            </span>
-          </div>
-        </div>
-        <nav
-          id={navPanelId}
-          aria-label="Customer Portal Demonstration"
-          className={`portal-nav${menuOpen ? " portal-nav--open" : ""}`}
-        >
-          <ul className="portal-nav__list">
-            {DEMO_NAV_ITEMS.map((item) => {
-              const active = isActive(pathname, item.href);
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className={`portal-nav__link${active ? " portal-nav__link--active" : ""}`}
-                    aria-current={active ? "page" : undefined}
-                    onClick={() => setMenuOpen(false)}
-                  >
-                    {item.label}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
-      </header>
+        </aside>
 
-      <main id="demo-main" className="portal-main" tabIndex={-1}>
-        <Container>
-          <div className="demo-portal__banner">
-            <Alert tone="warning" title={DEMO_DATA_BANNER} />
-          </div>
-          {children}
-        </Container>
-      </main>
+        <div className="sbj-demo__column">
+          <header className="sbj-demo__topbar">
+            <BrandLockup compact />
+            <span className="sbj-demo__chip">{DEMO_READ_ONLY_LABEL}</span>
+          </header>
+          <main id="demo-main" className="sbj-demo__main" tabIndex={-1}>
+            <DemoNotice />
+            {children}
+          </main>
+        </div>
+      </div>
+      <nav aria-label={DEMO_NAV_MOBILE_LABEL} className="sbj-demo__dock">
+        <NavList pathname={pathname} variant="dock" />
+      </nav>
     </div>
+  );
+}
+
+function NavList({
+  pathname,
+  variant,
+}: {
+  pathname: string;
+  variant: "rail" | "dock";
+}) {
+  return (
+    <ul
+      className={
+        variant === "rail" ? "sbj-demo__nav-list" : "sbj-demo__dock-list"
+      }
+    >
+      {DEMO_NAV_ITEMS.map((item) => {
+        const active = isDemoNavActive(pathname, item.href);
+        return (
+          <li key={`${variant}-${item.href}`}>
+            <Link
+              href={item.href}
+              className={`${variant === "rail" ? "sbj-demo__nav-link" : "sbj-demo__dock-link"}${active ? " is-active" : ""}`}
+              aria-current={active ? "page" : undefined}
+            >
+              {variant === "rail" ? (
+                <span className="sbj-demo__nav-mark" aria-hidden="true" />
+              ) : null}
+              {item.label}
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
