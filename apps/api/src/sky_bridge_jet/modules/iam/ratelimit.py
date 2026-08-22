@@ -36,3 +36,13 @@ class RateLimiter:
     def reset(self, identifier: str) -> None:
         with self._lock:
             self._hits.pop(identifier, None)
+
+    def clear(self) -> None:
+        """Drop all recorded attempts across every identifier.
+
+        Operational utility, also used by the test suite to isolate the per-process,
+        module-level auth limiters between tests — mirroring how per-email keying already
+        isolates the login limiter.
+        """
+        with self._lock:
+            self._hits.clear()

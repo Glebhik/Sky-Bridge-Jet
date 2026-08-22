@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
 from sky_bridge_jet.modules.iam.domain import InvitationStatus, MembershipStatus
@@ -158,6 +160,28 @@ class EmailVerificationTokenRepository:
         return self.session.scalars(
             select(EmailVerificationToken).where(EmailVerificationToken.token_hash == token_hash)
         ).first()
+
+    def consume_all_unconsumed_for_user(self, user_id: UUID, *, now: datetime) -> int:
+        """Mark every still-unconsumed verification token for the user as consumed.
+
+        Used when re-issuing a verification token so there is exactly one current
+        verification path: any previously issued, still-unused token is invalidated in
+        the same transaction before the replacement is added. Uses the existing
+        ``consumed_at`` column, so no schema change is required. Returns the number of
+        tokens invalidated.
+        """
+        result = cast(
+            "CursorResult[Any]",
+            self.session.execute(
+                update(EmailVerificationToken)
+                .where(
+                    EmailVerificationToken.user_id == user_id,
+                    EmailVerificationToken.consumed_at.is_(None),
+                )
+                .values(consumed_at=now)
+            ),
+        )
+        return result.rowcount or 0
 
 
 class PasswordResetTokenRepository:

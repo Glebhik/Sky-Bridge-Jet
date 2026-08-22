@@ -64,6 +64,56 @@ describe("validateProxyRequest — closed allow-list", () => {
   });
 });
 
+describe("Phase 9.2.A auth account-entry routes — exact allow-list", () => {
+  // Every newly allow-listed path (including the two-segment resend and reset/confirm)
+  // forwards on POST, rejects other methods with 405, and no `auth/*` wildcard leaks.
+  const routes: readonly (readonly string[])[] = [
+    ["auth", "register"],
+    ["auth", "verify-email"],
+    ["auth", "verification", "resend"],
+    ["auth", "password-reset"],
+    ["auth", "password-reset", "confirm"],
+  ];
+
+  it("accepts POST for each new route", () => {
+    for (const segments of routes) {
+      expect(validateProxyRequest(segments, "POST")).toMatchObject({
+        ok: true,
+        path: segments.join("/"),
+      });
+    }
+  });
+
+  it("rejects non-POST methods with 405", () => {
+    for (const segments of routes) {
+      for (const method of ["GET", "PUT", "PATCH", "DELETE"]) {
+        expect(validateProxyRequest(segments, method)).toMatchObject({
+          ok: false,
+          status: 405,
+        });
+      }
+    }
+  });
+
+  it("does not allow a wildcard or unknown auth path (still 404)", () => {
+    expect(
+      validateProxyRequest(["auth", "anything-else"], "POST"),
+    ).toMatchObject({
+      ok: false,
+      status: 404,
+    });
+    expect(
+      validateProxyRequest(["auth", "verification"], "POST"),
+    ).toMatchObject({
+      ok: false,
+      status: 404,
+    });
+    expect(
+      validateProxyRequest(["auth", "verification%2fresend"], "POST"),
+    ).toMatchObject({ ok: false });
+  });
+});
+
 describe("buildUpstreamUrl — trusted host only", () => {
   it("builds the URL from the configured origin, not any request input", () => {
     expect(buildUpstreamUrl("auth/me", "")).toBe(`${UPSTREAM}/api/v1/auth/me`);

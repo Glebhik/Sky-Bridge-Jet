@@ -10,11 +10,13 @@ Dispositions carry intent, not enforcement — enforcement lives in the routers/
 Pending dispositions mark work owned by an explicitly named later PR; a pending route
 is still protected by the global authentication gate (never anonymous).
 
-Canonical route set (documented normalization): the 80 OpenAPI operations plus the 4
+Canonical route set (documented normalization): the 81 OpenAPI operations plus the 4
 documentation/schema routes (`/docs`, `/docs/oauth2-redirect`, `/redoc`,
-`/openapi.json`) that Starlette serves outside the OpenAPI schema = 84 entries.
-HEAD/OPTIONS are ignored (auto-provided by Starlette). Phase 9.1.A adds one operation:
+`/openapi.json`) that Starlette serves outside the OpenAPI schema = 85 entries.
+HEAD/OPTIONS are ignored (auto-provided by Starlette). Phase 9.1.A added one operation:
 the authenticated customer-account recovery endpoint (79 → 80 ops; 83 → 84 entries).
+Phase 9.2.A adds one public operation: the enumeration-safe verification-resend endpoint
+`POST /api/v1/auth/verification/resend` (80 → 81 ops; 84 → 85 entries).
 """
 
 from __future__ import annotations
@@ -80,6 +82,13 @@ ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
     _p("POST", "/api/v1/auth/register", _PUB, "anonymous"),
     _p("POST", "/api/v1/auth/login", _PUB, "anonymous"),
     _p("POST", "/api/v1/auth/verify-email", _PUB, "anonymous"),
+    _p(
+        "POST",
+        "/api/v1/auth/verification/resend",
+        _PUB,
+        "anonymous",
+        "enumeration-safe verification resend (Phase 9.2.A)",
+    ),
     _p("POST", "/api/v1/auth/password-reset", _PUB, "anonymous"),
     _p("POST", "/api/v1/auth/password-reset/confirm", _PUB, "anonymous"),
     _p("POST", "/api/v1/webhooks/stripe", _PUB, "provider", "signature-authenticated"),
