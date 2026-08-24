@@ -1,8 +1,18 @@
-import pytest
-from fastapi.testclient import TestClient
+import os
 
-from sky_bridge_jet.main import app
-from sky_bridge_jet.modules.iam import router as iam_router
+# Test hermeticity: force transactional auth email OFF before anything imports the app
+# (which caches Settings at import). An OS env var overrides the developer's git-ignored
+# .env, so the suite always uses the provider-neutral fake sender and NEVER calls real
+# Resend — even when a developer has AUTH_EMAIL_ENABLED=true and a real key configured
+# locally for the manual smoke. Tests that need enabled/real behavior build their own
+# Settings explicitly.
+os.environ["AUTH_EMAIL_ENABLED"] = "false"
+
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+from sky_bridge_jet.main import app  # noqa: E402
+from sky_bridge_jet.modules.iam import router as iam_router  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

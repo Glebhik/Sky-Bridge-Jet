@@ -7,7 +7,11 @@ const forbiddenLiterals = [
   "API_UPSTREAM_ORIGIN",
   "DEMO_PORTAL_ENABLED",
   "NEXT_PUBLIC_DEMO_PORTAL_ENABLED",
+  // Server-only auth-email configuration (Phase 9.2.B1): the Resend key identifier and
+  // its actual value must never reach a client asset.
+  "RESEND_API_KEY",
   process.env.API_UPSTREAM_ORIGIN,
+  process.env.RESEND_API_KEY,
   process.env.CLIENT_BUNDLE_SECRET_SENTINEL,
 ].filter((value) => typeof value === "string" && value.length > 0);
 const forbiddenPatterns = [
@@ -15,6 +19,8 @@ const forbiddenPatterns = [
   /\bsk_(?:live|test)_[A-Za-z0-9]{12,}\b/,
   /\brk_(?:live|test)_[A-Za-z0-9]{12,}\b/,
   /\bAKIA[0-9A-Z]{16}\b/,
+  // Resend API keys are prefixed `re_`.
+  /\bre_[A-Za-z0-9]{16,}\b/,
 ];
 
 async function listFiles(directory) {

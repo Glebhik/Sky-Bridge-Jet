@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -76,6 +77,16 @@ class Settings(BaseSettings):
     auth_rate_limit_max_attempts: int = 10
     auth_rate_limit_window_seconds: int = 60
 
+    # Transactional auth email (Phase 9.2.B1) — DISABLED by default. The app boots and
+    # all tests run with these blank, using the provider-neutral fake sender. When
+    # enabled, a Resend API key is required (fail closed; the key is never echoed). The
+    # sender address is server-controlled. WEB_PUBLIC_ORIGIN is the server-side base for
+    # verification links; production requires an HTTPS origin when email is enabled.
+    auth_email_enabled: bool = False
+    resend_api_key: str | None = None
+    auth_email_from: str = "Sky Bridge Jet <no-reply@skybridgejet.disgroup.ie>"
+    web_public_origin: str = "http://localhost:3000"
+
     @property
     def cookie_secure_effective(self) -> bool:
         """Resolve the cookie Secure flag: explicit override, else on in production.
@@ -126,6 +137,37 @@ class Settings(BaseSettings):
             # Never echo the key itself.
             raise ValueError(
                 "A live Stripe secret key is not permitted while STRIPE_TEST_MODE_REQUIRED is set"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_auth_email(self) -> "Settings":
+        """Normalize the public origin and fail closed on incomplete email config.
+
+        ``WEB_PUBLIC_ORIGIN`` must be an absolute http(s) origin with no credentials,
+        path, query, or fragment; it is normalized to ``scheme://host[:port]`` so a
+        verification link can never be built from an unsafe base. When auth email is
+        enabled a Resend API key is required (the error never contains the key), and
+        production additionally requires an HTTPS origin.
+        """
+        parts = urlsplit(self.web_public_origin)
+        if parts.scheme not in {"http", "https"} or not parts.netloc:
+            raise ValueError("WEB_PUBLIC_ORIGIN must be an absolute http(s) origin")
+        if parts.username or parts.password:
+            raise ValueError("WEB_PUBLIC_ORIGIN must not contain credentials")
+        if parts.path not in {"", "/"} or parts.query or parts.fragment:
+            raise ValueError("WEB_PUBLIC_ORIGIN must not contain a path, query, or fragment")
+        # Normalize to the bare origin (drops a trailing slash and any component above).
+        self.web_public_origin = f"{parts.scheme}://{parts.netloc}"
+
+        if not self.auth_email_enabled:
+            return self
+        if not self.resend_api_key:
+            # Never echo the key (there is none) and never hint at its value.
+            raise ValueError("RESEND_API_KEY is required when AUTH_EMAIL_ENABLED is set")
+        if self.app_environment == "production" and parts.scheme != "https":
+            raise ValueError(
+                "WEB_PUBLIC_ORIGIN must use https in production when AUTH_EMAIL_ENABLED is set"
             )
         return self
 
