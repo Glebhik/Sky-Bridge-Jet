@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { LoginForm } from "@/app/login/LoginForm";
 import { AuthShell } from "@/components/auth/AuthShell";
+import { Alert } from "@/components/ui/primitives";
 import { sanitizeReturnPath } from "@/lib/auth/redirect";
 import { getServerSession } from "@/lib/session/server";
 
@@ -27,11 +28,20 @@ export const metadata: Metadata = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string | string[] }>;
+  searchParams: Promise<{
+    next?: string | string[];
+    verified?: string | string[];
+  }>;
 }) {
   const params = await searchParams;
   const rawNext = Array.isArray(params.next) ? params.next[0] : params.next;
   const returnPath = sanitizeReturnPath(rawNext);
+  // Strictly a fixed flag: only the exact value "1" shows the banner. No query content is
+  // ever reflected into the page, so `verified=<anything else>` renders nothing.
+  const rawVerified = Array.isArray(params.verified)
+    ? params.verified[0]
+    : params.verified;
+  const showVerifiedBanner = rawVerified === "1";
 
   const session = await getServerSession();
   if (session.status === "authenticated") {
@@ -45,6 +55,11 @@ export default async function LoginPage({
         <p className="sbj-auth__lede">
           Access your Sky Bridge Jet customer portal.
         </p>
+        {showVerifiedBanner ? (
+          <Alert tone="success">
+            <span>Your email is verified. Sign in to continue.</span>
+          </Alert>
+        ) : null}
         <LoginForm returnPath={returnPath} />
         <p className="sbj-auth__alt">
           New to Sky Bridge Jet?{" "}
