@@ -51,14 +51,18 @@ export default async function LoginPage({
   return (
     <AuthShell>
       <div className="sbj-auth__body">
-        <h1 className="sbj-auth__title">Sign in</h1>
+        <header className="sbj-auth__heading">
+          <h1 className="sbj-auth__title">Sign in</h1>
+        </header>
         <p className="sbj-auth__lede">
           Access your Sky Bridge Jet customer portal.
         </p>
         {showVerifiedBanner ? (
-          <Alert tone="success">
-            <span>Your email is verified. Sign in to continue.</span>
-          </Alert>
+          <div className="sbj-auth__verified">
+            <Alert tone="success">
+              <span>Your email is verified. Sign in to continue.</span>
+            </Alert>
+          </div>
         ) : null}
         <LoginForm returnPath={returnPath} />
         <p className="sbj-auth__alt">
