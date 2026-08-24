@@ -14,6 +14,7 @@ from uuid import UUID
 from fastapi import Depends, Header, Request
 from sqlalchemy.orm import Session
 
+from sky_bridge_jet.core.auth_email import AuthEmailSender, build_auth_email_sender
 from sky_bridge_jet.core.config import Settings, get_settings
 from sky_bridge_jet.db.session import SessionLocal, get_db
 from sky_bridge_jet.modules.iam.authz import (
@@ -30,6 +31,17 @@ from sky_bridge_jet.modules.iam.services import AuthService, load_principal
 
 DatabaseSession = Annotated[Session, Depends(get_db)]
 AppSettings = Annotated[Settings, Depends(get_settings)]
+
+
+def get_auth_email_sender(settings: AppSettings) -> AuthEmailSender:
+    """Provide the configured auth-email sender (fake when disabled, Resend when enabled).
+
+    Tests override this dependency with a shared ``FakeAuthEmailSender`` to inspect sends.
+    """
+    return build_auth_email_sender(settings)
+
+
+AuthEmailSenderDep = Annotated[AuthEmailSender, Depends(get_auth_email_sender)]
 
 # State-changing methods require CSRF defense when authenticated via cookie.
 _UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})

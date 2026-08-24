@@ -6,8 +6,10 @@ from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import JSONResponse
 
 from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
+from sky_bridge_jet.modules.iam.auth_email_delivery import deliver_verification_email
 from sky_bridge_jet.modules.iam.dependencies import (
     AppSettings,
+    AuthEmailSenderDep,
     CurrentPrincipal,
     DatabaseSession,
     require_permission,
@@ -182,6 +184,7 @@ def register(
     request: Request,
     session: DatabaseSession,
     settings: AppSettings,
+    email_sender: AuthEmailSenderDep,
 ) -> RegistrationResponse:
     # Enforce the per-IP floor *before* the expensive Argon2 hash / persistent write, and
     # key it on IP only (never the email) so a denial reveals nothing about any account.
@@ -189,6 +192,12 @@ def register(
         raise RateLimitedError("Too many registration attempts; please try again shortly")
     user, token = AuthService(session, settings).register(
         email=data.email, password=data.password, display_name=data.display_name
+    )
+    # The account/token are durable now (the service transaction has committed). Send the
+    # verification email *outside* any transaction; a delivery failure never rolls the
+    # account back and never changes this response (Phase 9.2.B1).
+    deliver_verification_email(
+        email_sender, settings, recipient=user.email, raw_token=token, operation="/auth/register"
     )
     return RegistrationResponse(
         user=UserResponse.model_validate(user), verification_token=_dev_token(settings, token)
@@ -206,14 +215,24 @@ def resend_verification(
     request: Request,
     session: DatabaseSession,
     settings: AppSettings,
+    email_sender: AuthEmailSenderDep,
 ) -> MessageResponse:
     if not _resend_limiter.check(_client_key(request, "resend")):
         raise RateLimitedError("Too many requests; please try again shortly")
     # Enumeration-safe: the service issues a token only for an eligible pending account,
-    # but the public response is identical in every case and never carries the token. The
-    # raw token is intentionally discarded here — the Phase 9.2.B AuthEmailSender boundary
-    # will consume the service return value to deliver the message.
-    AuthService(session, settings).resend_verification(data.email)
+    # and the public response below is identical in every case and never carries the
+    # token. Only an eligible account produces a token to deliver; the token transaction
+    # has already committed, so the send happens outside it. A provider failure is
+    # swallowed and never changes this acknowledgement.
+    token = AuthService(session, settings).resend_verification(data.email)
+    if token is not None:
+        deliver_verification_email(
+            email_sender,
+            settings,
+            recipient=data.email,
+            raw_token=token,
+            operation="/auth/verification/resend",
+        )
     return MessageResponse(
         message="If the account requires verification, verification instructions have been sent"
     )
