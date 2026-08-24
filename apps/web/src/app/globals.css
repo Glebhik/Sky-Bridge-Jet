@@ -852,3 +852,20 @@ h1 {
     transition: none !important;
   }
 }
+
+/* Verify-email loading state on the Midnight Aviation panel (Phase 9.2.B2.2) — scoped. */
+.sbj-auth .state--loading {
+  color: var(--a-text-muted);
+  justify-content: flex-start;
+}
+
+.sbj-auth .state__spinner {
+  border: 2px solid var(--a-line);
+  border-top-color: var(--a-champagne-light);
+}
+
+.sbj-auth .alert--success {
+  background: rgba(197, 163, 101, 0.12);
+  border: 1px solid var(--a-line);
+  color: var(--a-text);
+}
