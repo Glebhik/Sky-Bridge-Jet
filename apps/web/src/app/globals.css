@@ -638,3 +638,217 @@ h1 {
     display: none;
   }
 }
+
+/* ---------- Production auth shell (Phase 9.2.B2.1 — Midnight Aviation) ---------- */
+/* Tightly scoped under `.sbj-auth`; overrides of the shared primitives are also scoped
+   so `/portal` and `/demo` are never affected. Tokens are local to this surface. */
+.sbj-auth {
+  --a-midnight: #06131f;
+  --a-midnight-deep: #030b12;
+  --a-navy: #0b2030;
+  --a-panel: #10293b;
+  --a-champagne: #c5a365;
+  --a-champagne-light: #e2c98f;
+  --a-ivory: #f5f0e8;
+  --a-text: #eef1f2;
+  --a-text-muted: #a9b2ba;
+  --a-line: rgba(197, 163, 101, 0.28);
+  --a-danger: #f2b8b5;
+  align-items: center;
+  background:
+    radial-gradient(
+      1100px 480px at 80% -10%,
+      rgba(197, 163, 101, 0.08),
+      transparent 55%
+    ),
+    linear-gradient(180deg, var(--a-navy), var(--a-midnight-deep));
+  color: var(--a-text);
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: clip;
+  padding: 2rem 1.25rem calc(2rem + env(safe-area-inset-bottom, 0));
+}
+
+.sbj-auth__panel {
+  background: var(--a-panel);
+  border: 1px solid var(--a-line);
+  border-radius: 0.9rem;
+  box-shadow: 0 18px 50px rgba(3, 11, 18, 0.45);
+  max-width: 26rem;
+  padding: 2rem;
+  width: 100%;
+}
+
+.sbj-auth__brand {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Reserved slot for the future approved emblem — hidden until a clean asset exists. */
+.sbj-auth__mark {
+  display: none;
+}
+
+.sbj-auth__wordmark {
+  color: var(--a-ivory);
+  font-family: "Palatino Linotype", Palatino, "Times New Roman", serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.sbj-auth__body {
+  display: grid;
+  gap: 1rem;
+}
+
+.sbj-auth__title {
+  color: var(--a-text);
+  font-family: "Palatino Linotype", Palatino, "Times New Roman", serif;
+  font-size: 1.5rem;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.sbj-auth__lede {
+  color: var(--a-text-muted);
+  margin: 0;
+}
+
+.sbj-auth__muted {
+  color: var(--a-text-muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.sbj-auth__form {
+  display: grid;
+  gap: 1rem;
+  margin: 0.25rem 0 0;
+}
+
+.sbj-auth__field-group {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.sbj-auth__hint {
+  color: var(--a-text-muted);
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.sbj-auth__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.sbj-auth__alt {
+  color: var(--a-text-muted);
+  font-size: 0.9rem;
+  margin: 1.25rem 0 0;
+}
+
+.sbj-auth__link {
+  color: var(--a-champagne-light);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* Scoped overrides of the shared primitives so the dark surface stays legible. */
+.sbj-auth .field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.sbj-auth .field__label {
+  color: var(--a-text);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.sbj-auth .field__input {
+  background: var(--a-midnight);
+  border: 1px solid var(--a-line);
+  border-radius: 0.5rem;
+  color: var(--a-text);
+  font: inherit;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  width: 100%;
+}
+
+.sbj-auth .field__input::placeholder {
+  color: var(--a-text-muted);
+}
+
+.sbj-auth .button {
+  border-radius: 0.5rem;
+  min-height: 2.75rem;
+}
+
+.sbj-auth .button--primary {
+  background: var(--a-champagne);
+  border: 1px solid var(--a-champagne);
+  color: var(--a-midnight-deep);
+  font-weight: 700;
+}
+
+.sbj-auth .button--primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.sbj-auth .button--secondary {
+  background: transparent;
+  border: 1px solid var(--a-line);
+  color: var(--a-text);
+}
+
+.sbj-auth .alert {
+  border-radius: 0.5rem;
+}
+
+.sbj-auth .alert--error {
+  background: rgba(180, 35, 24, 0.14);
+  border: 1px solid rgba(242, 184, 181, 0.4);
+  color: var(--a-danger);
+}
+
+.sbj-auth .alert--info {
+  background: rgba(197, 163, 101, 0.1);
+  border: 1px solid var(--a-line);
+  color: var(--a-text);
+}
+
+.sbj-auth :focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--a-midnight),
+    0 0 0 4px var(--a-champagne-light);
+  border-radius: 0.4rem;
+}
+
+@media (max-width: 30rem) {
+  .sbj-auth__panel {
+    padding: 1.5rem 1.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sbj-auth *,
+  .sbj-auth *::before,
+  .sbj-auth *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
