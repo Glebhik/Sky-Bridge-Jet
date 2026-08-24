@@ -43,7 +43,11 @@ export function ResendVerificationForm() {
   }
 
   return (
-    <form className="sbj-auth__form" onSubmit={handleSubmit} noValidate>
+    <form
+      className="sbj-auth__form sbj-auth__resend"
+      onSubmit={handleSubmit}
+      noValidate
+    >
       {state === "done" || state === "wait" || state === "error" ? (
         <Alert tone={state === "error" ? "error" : "info"}>
           <span>

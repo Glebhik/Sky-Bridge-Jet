@@ -639,7 +639,7 @@ h1 {
   }
 }
 
-/* ---------- Production auth shell (Phase 9.2.B2.1 — Midnight Aviation) ---------- */
+/* ---------- Production auth shell (Midnight Aviation — visual polish V1) ---------- */
 /* Tightly scoped under `.sbj-auth`; overrides of the shared primitives are also scoped
    so `/portal` and `/demo` are never affected. Tokens are local to this surface. */
 .sbj-auth {
@@ -653,39 +653,122 @@ h1 {
   --a-text: #eef1f2;
   --a-text-muted: #a9b2ba;
   --a-line: rgba(197, 163, 101, 0.28);
-  --a-danger: #f2b8b5;
+  --a-line-soft: rgba(245, 240, 232, 0.1);
+  --a-caution: #e4cfc4;
+  --a-positive: #c5d7c8;
+  --a-display:
+    "Palatino Linotype", Palatino, "Iowan Old Style", "Times New Roman", serif;
+  --a-ui: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --a-focus: 0 0 0 2px var(--a-midnight), 0 0 0 4px var(--a-champagne-light);
   align-items: center;
-  background:
-    radial-gradient(
-      1100px 480px at 80% -10%,
-      rgba(197, 163, 101, 0.08),
-      transparent 55%
-    ),
-    linear-gradient(180deg, var(--a-navy), var(--a-midnight-deep));
+  background: linear-gradient(
+    180deg,
+    var(--a-navy) 0%,
+    var(--a-midnight) 42%,
+    var(--a-midnight-deep) 100%
+  );
   color: var(--a-text);
+  color-scheme: dark;
   display: flex;
+  font-family: var(--a-ui);
+  isolation: isolate;
   justify-content: center;
   min-height: 100vh;
   min-height: 100dvh;
   overflow-x: clip;
-  padding: 2rem 1.25rem calc(2rem + env(safe-area-inset-bottom, 0));
+  overflow-y: auto;
+  padding: max(1.75rem, env(safe-area-inset-top, 0px))
+    max(1.25rem, env(safe-area-inset-right, 0px))
+    calc(1.75rem + env(safe-area-inset-bottom, 0px))
+    max(1.25rem, env(safe-area-inset-left, 0px));
+  position: relative;
+}
+
+.sbj-auth__atmosphere {
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  z-index: 0;
+}
+
+.sbj-auth__grid {
+  background-image:
+    linear-gradient(rgba(197, 163, 101, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(197, 163, 101, 0.055) 1px, transparent 1px);
+  background-size: 56px 56px;
+  height: 100%;
+  mask-image: radial-gradient(
+    ellipse 80% 70% at 50% 38%,
+    #000 12%,
+    transparent 72%
+  );
+  opacity: 0.85;
+  width: 100%;
+}
+
+.sbj-auth__glow {
+  background: radial-gradient(
+    920px 420px at 72% 8%,
+    rgba(197, 163, 101, 0.09),
+    transparent 58%
+  );
+  height: 100%;
+  width: 100%;
+  position: absolute;
+  inset: 0;
+}
+
+.sbj-auth__horizon {
+  background: linear-gradient(
+    90deg,
+    transparent 4%,
+    rgba(197, 163, 101, 0.34) 50%,
+    transparent 96%
+  );
+  bottom: 22%;
+  height: 1px;
+  left: 0;
+  position: absolute;
+  right: 0;
+}
+
+.sbj-auth__route {
+  color: rgba(226, 201, 143, 0.38);
+  height: 100%;
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 100%;
 }
 
 .sbj-auth__panel {
-  background: var(--a-panel);
-  border: 1px solid var(--a-line);
-  border-radius: 0.9rem;
-  box-shadow: 0 18px 50px rgba(3, 11, 18, 0.45);
-  max-width: 26rem;
-  padding: 2rem;
+  background: linear-gradient(
+    180deg,
+    rgba(22, 54, 76, 0.94) 0%,
+    rgba(16, 41, 59, 0.97) 100%
+  );
+  border: 1px solid var(--a-line-soft);
+  border-radius: 1rem;
+  box-shadow:
+    inset 0 1px 0 rgba(226, 201, 143, 0.22),
+    0 28px 72px rgba(3, 11, 18, 0.55);
+  max-width: 27.5rem;
+  padding: 2.15rem 2rem 2rem;
+  position: relative;
   width: 100%;
+  z-index: 1;
 }
 
 .sbj-auth__brand {
   align-items: center;
-  display: inline-flex;
+  border-bottom: 1px solid var(--a-line-soft);
+  display: flex;
   gap: 0.5rem;
-  margin-bottom: 1.5rem;
+  margin: 0 0 1.65rem;
+  min-height: 2.75rem;
+  padding-bottom: 1.15rem;
+  width: 100%;
 }
 
 /* Reserved slot for the future approved emblem — hidden until a clean asset exists. */
@@ -695,95 +778,178 @@ h1 {
 
 .sbj-auth__wordmark {
   color: var(--a-ivory);
-  font-family: "Palatino Linotype", Palatino, "Times New Roman", serif;
-  font-size: 1.15rem;
+  font-family: var(--a-display);
+  font-size: 0.92rem;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.2em;
+  line-height: 1.2;
   text-transform: uppercase;
 }
 
 .sbj-auth__body {
+  align-content: start;
   display: grid;
   gap: 1rem;
+  min-height: 16.5rem;
+}
+
+.sbj-auth__heading {
+  display: grid;
+  gap: 0.7rem;
+  justify-items: start;
+}
+
+.sbj-auth__status-mark {
+  border: 1px solid var(--a-champagne);
+  border-radius: 999px;
+  display: block;
+  height: 0.5rem;
+  width: 0.5rem;
+}
+
+.sbj-auth__status-mark--positive {
+  background: var(--a-positive);
+  border-color: var(--a-positive);
+}
+
+.sbj-auth__status-mark--quiet {
+  background: transparent;
+  border-color: var(--a-champagne-light);
+}
+
+.sbj-auth__status-mark--caution {
+  background: transparent;
+  border-color: var(--a-caution);
 }
 
 .sbj-auth__title {
-  color: var(--a-text);
-  font-family: "Palatino Linotype", Palatino, "Times New Roman", serif;
-  font-size: 1.5rem;
+  color: var(--a-ivory);
+  font-family: var(--a-display);
+  font-size: clamp(1.45rem, 4.2vw, 1.8rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
   line-height: 1.2;
   margin: 0;
+  text-wrap: balance;
 }
 
 .sbj-auth__lede {
   color: var(--a-text-muted);
+  font-size: 0.98rem;
+  line-height: 1.55;
   margin: 0;
+}
+
+.sbj-auth__email {
+  color: var(--a-ivory);
+  display: block;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin-top: 0.45rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .sbj-auth__muted {
   color: var(--a-text-muted);
   font-size: 0.9rem;
+  line-height: 1.5;
   margin: 0;
 }
 
-.sbj-auth__form {
+.sbj-auth__form,
+.sbj-auth .auth-form {
   display: grid;
   gap: 1rem;
-  margin: 0.25rem 0 0;
+  margin: 0.15rem 0 0;
 }
 
 .sbj-auth__field-group {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.4rem;
 }
 
 .sbj-auth__hint {
   color: var(--a-text-muted);
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
   margin: 0;
 }
 
 .sbj-auth__actions {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-top: 0.5rem;
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
+  margin-top: 0.35rem;
 }
 
 .sbj-auth__alt {
   color: var(--a-text-muted);
   font-size: 0.9rem;
-  margin: 1.25rem 0 0;
+  margin: 0.35rem 0 0;
 }
 
 .sbj-auth__link {
   color: var(--a-champagne-light);
+  display: inline-flex;
   font-weight: 600;
+  min-height: 2.75rem;
+  align-items: center;
   text-decoration: underline;
-  text-underline-offset: 0.2em;
+  text-underline-offset: 0.22em;
+}
+
+.sbj-auth__resend {
+  border-top: 1px solid var(--a-line-soft);
+  margin-top: 0.35rem;
+  padding-top: 1.2rem;
+}
+
+.sbj-auth__verified .alert {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.sbj-auth__verified .alert::before {
+  background: var(--a-positive);
+  border-radius: 999px;
+  content: "";
+  flex: 0 0 0.5rem;
+  height: 0.5rem;
+  margin-top: 0.45rem;
+  width: 0.5rem;
+}
+
+.sbj-auth__loader {
+  margin-top: 0.15rem;
 }
 
 /* Scoped overrides of the shared primitives so the dark surface stays legible. */
 .sbj-auth .field {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.4rem;
 }
 
 .sbj-auth .field__label {
-  color: var(--a-text);
-  font-size: 0.9rem;
+  color: var(--a-ivory);
+  font-size: 0.8125rem;
   font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .sbj-auth .field__input {
-  background: var(--a-midnight);
-  border: 1px solid var(--a-line);
-  border-radius: 0.5rem;
+  appearance: none;
+  background: rgba(3, 11, 18, 0.72);
+  border: 1px solid var(--a-line-soft);
+  border-radius: 0.45rem;
   color: var(--a-text);
-  font: inherit;
+  font-family: inherit;
+  font-size: 1rem;
   min-height: 2.75rem;
-  padding: 0.5rem 0.75rem;
+  padding: 0.7rem 0.85rem;
   width: 100%;
 }
 
@@ -791,56 +957,131 @@ h1 {
   color: var(--a-text-muted);
 }
 
-.sbj-auth .button {
-  border-radius: 0.5rem;
-  min-height: 2.75rem;
+.sbj-auth .field__input:hover {
+  border-color: var(--a-line);
 }
 
-.sbj-auth .button--primary {
+.sbj-auth .field__input:focus {
+  border-color: var(--a-champagne);
+}
+
+.sbj-auth .field__input:-webkit-autofill,
+.sbj-auth .field__input:-webkit-autofill:hover,
+.sbj-auth .field__input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--a-text);
+  box-shadow: 0 0 0 1000px var(--a-midnight) inset;
+  caret-color: var(--a-text);
+}
+
+.sbj-auth .button,
+.sbj-auth a.button {
+  border-radius: 0.45rem;
+  letter-spacing: 0.02em;
+  min-height: 2.75rem;
+  width: 100%;
+}
+
+.sbj-auth .button--primary,
+.sbj-auth a.button--primary {
   background: var(--a-champagne);
   border: 1px solid var(--a-champagne);
   color: var(--a-midnight-deep);
   font-weight: 700;
 }
 
-.sbj-auth .button--primary:disabled {
+.sbj-auth .button--primary:hover:not(:disabled),
+.sbj-auth a.button--primary:hover {
+  background: var(--a-champagne-light);
+  border-color: var(--a-champagne-light);
+}
+
+.sbj-auth .button:disabled {
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 0.5;
 }
 
 .sbj-auth .button--secondary {
   background: transparent;
   border: 1px solid var(--a-line);
-  color: var(--a-text);
+  color: var(--a-ivory);
+}
+
+.sbj-auth .button--secondary:hover:not(:disabled) {
+  border-color: var(--a-champagne-light);
+  color: var(--a-ivory);
 }
 
 .sbj-auth .alert {
-  border-radius: 0.5rem;
+  border-radius: 0.45rem;
+  padding: 0.9rem 1rem;
+}
+
+.sbj-auth .alert__body,
+.sbj-auth .alert__title {
+  color: inherit;
 }
 
 .sbj-auth .alert--error {
-  background: rgba(180, 35, 24, 0.14);
-  border: 1px solid rgba(242, 184, 181, 0.4);
-  color: var(--a-danger);
+  background: rgba(228, 207, 196, 0.08);
+  border: 1px solid rgba(228, 207, 196, 0.38);
+  border-left: 2px solid var(--a-caution);
+  color: var(--a-ivory);
 }
 
 .sbj-auth .alert--info {
+  background: rgba(197, 163, 101, 0.08);
+  border: 1px solid var(--a-line);
+  color: var(--a-ivory);
+}
+
+.sbj-auth .alert--success {
   background: rgba(197, 163, 101, 0.1);
   border: 1px solid var(--a-line);
-  color: var(--a-text);
+  border-left: 2px solid var(--a-champagne);
+  color: var(--a-ivory);
 }
 
 .sbj-auth :focus-visible {
   outline: none;
-  box-shadow:
-    0 0 0 2px var(--a-midnight),
-    0 0 0 4px var(--a-champagne-light);
+  box-shadow: var(--a-focus);
   border-radius: 0.4rem;
 }
 
+.sbj-auth .state--loading {
+  color: var(--a-text-muted);
+  justify-content: flex-start;
+  padding: 0.15rem 0;
+}
+
+.sbj-auth .state__spinner {
+  animation: sbj-auth-spin 1.15s linear infinite;
+  border: 1.5px solid rgba(197, 163, 101, 0.22);
+  border-top-color: var(--a-champagne-light);
+  height: 1.05rem;
+  width: 1.05rem;
+}
+
+@keyframes sbj-auth-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 30rem) {
+  .sbj-auth {
+    padding: max(1.15rem, env(safe-area-inset-top, 0px))
+      max(1rem, env(safe-area-inset-right, 0px))
+      calc(1.15rem + env(safe-area-inset-bottom, 0px))
+      max(1rem, env(safe-area-inset-left, 0px));
+  }
+
   .sbj-auth__panel {
-    padding: 1.5rem 1.25rem;
+    padding: 1.5rem 1.2rem 1.4rem;
+  }
+
+  .sbj-auth__wordmark {
+    font-size: 0.84rem;
+    letter-spacing: 0.16em;
   }
 }
 
@@ -851,21 +1092,9 @@ h1 {
     animation: none !important;
     transition: none !important;
   }
-}
 
-/* Verify-email loading state on the Midnight Aviation panel (Phase 9.2.B2.2) — scoped. */
-.sbj-auth .state--loading {
-  color: var(--a-text-muted);
-  justify-content: flex-start;
-}
-
-.sbj-auth .state__spinner {
-  border: 2px solid var(--a-line);
-  border-top-color: var(--a-champagne-light);
-}
-
-.sbj-auth .alert--success {
-  background: rgba(197, 163, 101, 0.12);
-  border: 1px solid var(--a-line);
-  color: var(--a-text);
+  .sbj-auth .state__spinner {
+    border-color: var(--a-champagne);
+    opacity: 0.85;
+  }
 }

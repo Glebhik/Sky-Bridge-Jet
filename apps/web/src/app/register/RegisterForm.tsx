@@ -101,11 +101,18 @@ export function RegisterForm() {
   if (registeredEmail !== null) {
     return (
       <div className="sbj-auth__body">
-        <h1 className="sbj-auth__title">Check your email</h1>
+        <header className="sbj-auth__heading">
+          <span
+            className="sbj-auth__status-mark sbj-auth__status-mark--positive"
+            aria-hidden="true"
+          />
+          <h1 className="sbj-auth__title">Check your email</h1>
+        </header>
         <p className="sbj-auth__lede">
           If everything is in order, we&apos;ve sent a verification link to{" "}
-          <strong>{registeredEmail}</strong>. The link expires in 24 hours.
+          <strong className="sbj-auth__email">{registeredEmail}</strong>
         </p>
+        <p className="sbj-auth__muted">The link expires in 24 hours.</p>
         <p className="sbj-auth__muted">
           Please check your inbox and spam folder.
         </p>
@@ -139,7 +146,9 @@ export function RegisterForm() {
 
   return (
     <div className="sbj-auth__body">
-      <h1 className="sbj-auth__title">Create your account</h1>
+      <header className="sbj-auth__heading">
+        <h1 className="sbj-auth__title">Create your account</h1>
+      </header>
       <p className="sbj-auth__lede">
         Set up secure access to your Sky Bridge Jet customer portal.
       </p>

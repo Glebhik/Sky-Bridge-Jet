@@ -95,17 +95,27 @@ export function VerifyEmailClient() {
     <div className="sbj-auth__body" aria-live="polite">
       {state === "verifying" ? (
         <>
-          <h1 className="sbj-auth__title">Verifying your email</h1>
+          <header className="sbj-auth__heading">
+            <h1 className="sbj-auth__title">Verifying your email</h1>
+          </header>
           <p className="sbj-auth__lede">
             Please wait while we confirm your email address.
           </p>
-          <LoadingState label="Verifying…" />
+          <div className="sbj-auth__loader">
+            <LoadingState label="Verifying…" />
+          </div>
         </>
       ) : null}
 
       {state === "verified" ? (
         <>
-          <h1 className="sbj-auth__title">Your email is verified</h1>
+          <header className="sbj-auth__heading">
+            <span
+              className="sbj-auth__status-mark sbj-auth__status-mark--positive"
+              aria-hidden="true"
+            />
+            <h1 className="sbj-auth__title">Your email is verified</h1>
+          </header>
           <p className="sbj-auth__lede">
             Your Sky Bridge Jet account is ready for sign in.
           </p>
@@ -119,9 +129,15 @@ export function VerifyEmailClient() {
 
       {state === "invalid_or_expired" ? (
         <>
-          <h1 className="sbj-auth__title">
-            This verification link can&apos;t be used
-          </h1>
+          <header className="sbj-auth__heading">
+            <span
+              className="sbj-auth__status-mark sbj-auth__status-mark--caution"
+              aria-hidden="true"
+            />
+            <h1 className="sbj-auth__title">
+              This verification link can&apos;t be used
+            </h1>
+          </header>
           <p className="sbj-auth__lede">
             This link is invalid or has expired. Request a new verification
             email and try again.
@@ -137,7 +153,13 @@ export function VerifyEmailClient() {
 
       {state === "missing_token" ? (
         <>
-          <h1 className="sbj-auth__title">Verification link unavailable</h1>
+          <header className="sbj-auth__heading">
+            <span
+              className="sbj-auth__status-mark sbj-auth__status-mark--caution"
+              aria-hidden="true"
+            />
+            <h1 className="sbj-auth__title">Verification link unavailable</h1>
+          </header>
           <p className="sbj-auth__lede">
             This verification link is missing or invalid. Request a new
             verification email below.
@@ -153,9 +175,15 @@ export function VerifyEmailClient() {
 
       {state === "network_error" ? (
         <>
-          <h1 className="sbj-auth__title">
-            We couldn&apos;t verify your email
-          </h1>
+          <header className="sbj-auth__heading">
+            <span
+              className="sbj-auth__status-mark sbj-auth__status-mark--caution"
+              aria-hidden="true"
+            />
+            <h1 className="sbj-auth__title">
+              We couldn&apos;t verify your email
+            </h1>
+          </header>
           <Alert tone="error">
             <span>Please try again.</span>
           </Alert>
