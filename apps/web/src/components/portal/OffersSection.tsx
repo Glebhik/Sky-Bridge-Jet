@@ -1,21 +1,30 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { portalApi } from "@/lib/api/client";
 import type { CustomerOffer } from "@/lib/api/types";
 import { useApiResource } from "@/lib/api/use-resource";
 import {
+  canSelectCustomerOffer,
   compareCustomerOffers,
   formatOfferMoney,
   offerAvailability,
   serviceItems,
 } from "@/lib/portal/offers";
+import { ApiError } from "@/lib/api/errors";
 import { formatDateTime } from "@/lib/portal/trip-requests";
-import { Alert, Badge, Card, LoadingState } from "@/components/ui/primitives";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  LoadingState,
+} from "@/components/ui/primitives";
 
 interface Props {
   readonly tripRequestId: string;
+  readonly tripStatus: string;
   readonly organizationId?: string;
 }
 
@@ -34,7 +43,15 @@ function FactsList({ title, value }: { title: string; value: string | null }) {
   );
 }
 
-function OfferCard({ offer }: { offer: CustomerOffer }) {
+function OfferCard({
+  offer,
+  canSelect,
+  onSelect,
+}: {
+  offer: CustomerOffer;
+  canSelect: boolean;
+  onSelect: () => void;
+}) {
   const availability = offerAvailability(offer.status);
   const tone =
     availability === "selected"
@@ -100,12 +117,32 @@ function OfferCard({ offer }: { offer: CustomerOffer }) {
             <p>{offer.cancellation_policy}</p>
           </div>
         ) : null}
+        {canSelect ? (
+          <div className="offer-card__actions">
+            <Button variant="primary" onClick={onSelect}>
+              Select offer
+            </Button>
+          </div>
+        ) : null}
       </article>
     </li>
   );
 }
 
-export function OffersSection({ tripRequestId, organizationId }: Props) {
+export function OffersSection({
+  tripRequestId,
+  tripStatus,
+  organizationId,
+}: Props) {
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [selectedResponse, setSelectedResponse] =
+    useState<CustomerOffer | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [selectionError, setSelectionError] = useState<
+    "conflict" | "other" | null
+  >(null);
+  const pendingRef = useRef(false);
   const load = useCallback(
     (signal: AbortSignal) =>
       portalApi.listTripRequestOffers(tripRequestId, organizationId, signal),
@@ -113,8 +150,48 @@ export function OffersSection({ tripRequestId, organizationId }: Props) {
   );
   const state = useApiResource<readonly CustomerOffer[]>(
     load,
-    `offers:${tripRequestId}:${organizationId ?? "none"}`,
+    `offers:${tripRequestId}:${organizationId ?? "none"}:${refreshNonce}`,
   );
+  const offers =
+    state.status === "ready"
+      ? state.data.map((offer) =>
+          selectedResponse?.id === offer.id ? selectedResponse : offer,
+        )
+      : [];
+  const confirmingOffer = offers.find((offer) => offer.id === confirmingId);
+
+  const selectConfirmedOffer = async () => {
+    if (!confirmingOffer || pendingRef.current) return;
+    if (!canSelectCustomerOffer(tripStatus, confirmingOffer, offers)) return;
+    pendingRef.current = true;
+    setPending(true);
+    setSelectionError(null);
+    try {
+      const selected = await portalApi.selectOffer(
+        tripRequestId,
+        confirmingOffer.id,
+        organizationId,
+      );
+      setSelectedResponse(selected);
+      setConfirmingId(null);
+    } catch (error) {
+      setSelectionError(
+        error instanceof ApiError && error.status === 409
+          ? "conflict"
+          : "other",
+      );
+    } finally {
+      pendingRef.current = false;
+      setPending(false);
+    }
+  };
+
+  const refreshOffers = () => {
+    setSelectionError(null);
+    setConfirmingId(null);
+    setSelectedResponse(null);
+    setRefreshNonce((value) => value + 1);
+  };
   return (
     <Card className="offers-section">
       <h2 className="card__title">Offers</h2>
@@ -133,11 +210,62 @@ export function OffersSection({ tripRequestId, organizationId }: Props) {
         </p>
       ) : null}
       {state.status === "ready" && state.data.length > 0 ? (
-        <ul className="offer-grid">
-          {[...state.data].sort(compareCustomerOffers).map((offer) => (
-            <OfferCard key={offer.id} offer={offer} />
+        <ul className="offer-grid" aria-busy={pending}>
+          {[...offers].sort(compareCustomerOffers).map((offer) => (
+            <OfferCard
+              key={offer.id}
+              offer={offer}
+              canSelect={canSelectCustomerOffer(tripStatus, offer, offers)}
+              onSelect={() => {
+                setSelectionError(null);
+                setConfirmingId(offer.id);
+              }}
+            />
           ))}
         </ul>
+      ) : null}
+      {confirmingOffer ? (
+        <section
+          className="offer-confirmation"
+          aria-labelledby="offer-confirmation-title"
+          aria-busy={pending}
+        >
+          <h3 id="offer-confirmation-title">Confirm offer selection</h3>
+          <p>
+            Selecting this offer does not create a booking and does not charge
+            you. You cannot change the selected offer afterward.
+          </p>
+          <div className="offer-confirmation__actions">
+            <Button
+              variant="secondary"
+              disabled={pending}
+              onClick={() => setConfirmingId(null)}
+            >
+              Keep comparing
+            </Button>
+            <Button
+              variant="primary"
+              disabled={pending}
+              onClick={() => void selectConfirmedOffer()}
+            >
+              {pending ? "Selecting…" : "Select this offer"}
+            </Button>
+          </div>
+        </section>
+      ) : null}
+      {selectionError === "conflict" ? (
+        <Alert tone="warning" title="Offer selection changed">
+          This offer can no longer be selected, or another offer has already
+          been selected.
+          <Button variant="secondary" onClick={refreshOffers}>
+            Refresh offers
+          </Button>
+        </Alert>
+      ) : null}
+      {selectionError === "other" ? (
+        <Alert tone="error" title="Offer couldn’t be selected">
+          No selection was made. Check your connection and try again.
+        </Alert>
       ) : null}
     </Card>
   );

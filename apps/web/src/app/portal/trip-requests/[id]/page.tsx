@@ -236,6 +236,7 @@ export default function PortalTripRequestDetailPage() {
 
       <OffersSection
         tripRequestId={trip.id}
+        tripStatus={trip.status}
         organizationId={activeOrganizationId ?? undefined}
       />
 

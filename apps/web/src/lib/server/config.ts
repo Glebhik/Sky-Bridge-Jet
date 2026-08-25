@@ -78,13 +78,18 @@ export interface ProxyPattern {
  * customer's own trip request (`POST /trip-requests/{id}/cancel`). Both are three-segment
  * patterns with a literal trailing verb. Phase 9.4.A exposes only customer-safe, trip-scoped
  * published offer reads through `GET /trip-requests/{id}/offers`. Offer selection, operator
- * offer mutations, booking mutations, and payment mutations remain unexposed. This is NOT
+ * Phase 9.4.B adds the one exact customer selection mutation; all other offer mutations,
+ * booking mutations, and payment mutations remain unexposed. This is NOT
  * prefix matching, a wildcard, or a passthrough; the segment count must match exactly, and
  * each route is bound to exactly its listed method.
  */
 export const PROXY_PATTERN_ALLOWLIST: readonly ProxyPattern[] = [
   { segments: ["trip-requests", ":uuid"], methods: ["GET"] },
   { segments: ["trip-requests", ":uuid", "offers"], methods: ["GET"] },
+  {
+    segments: ["trip-requests", ":uuid", "offers", ":uuid", "select"],
+    methods: ["POST"],
+  },
   { segments: ["trip-requests", ":uuid", "submit"], methods: ["POST"] },
   { segments: ["trip-requests", ":uuid", "cancel"], methods: ["POST"] },
   { segments: ["airports", ":uuid"], methods: ["GET"] },

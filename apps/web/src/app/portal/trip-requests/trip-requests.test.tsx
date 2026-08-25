@@ -12,6 +12,7 @@ const getTripRequest = vi.fn();
 const getAirport = vi.fn();
 const cancelTripRequest = vi.fn();
 const listTripRequestOffers = vi.fn();
+const selectOffer = vi.fn();
 
 vi.mock("@/lib/api/client", () => ({
   portalApi: {
@@ -20,6 +21,7 @@ vi.mock("@/lib/api/client", () => ({
     getAirport: (...a: unknown[]) => getAirport(...a),
     cancelTripRequest: (...a: unknown[]) => cancelTripRequest(...a),
     listTripRequestOffers: (...a: unknown[]) => listTripRequestOffers(...a),
+    selectOffer: (...a: unknown[]) => selectOffer(...a),
   },
 }));
 
@@ -79,6 +81,7 @@ beforeEach(() => {
   getAirport.mockReset();
   cancelTripRequest.mockReset();
   listTripRequestOffers.mockReset();
+  selectOffer.mockReset();
   listTripRequestOffers.mockResolvedValue([]);
 });
 
@@ -141,6 +144,42 @@ describe("PortalTripRequestsPage (list)", () => {
 });
 
 describe("PortalTripRequestDetailPage", () => {
+  it("integrates selection into a SUBMITTED trip and forwards active organization context", async () => {
+    getTripRequest.mockResolvedValueOnce(TRIP);
+    getAirport.mockRejectedValue(new ApiError(404, "not_found", "x", "client"));
+    const offer = {
+      id: "11111111-2222-4333-8444-555555555555",
+      trip_request_id: TRIP.id,
+      status: "SUBMITTED" as const,
+      currency: "EUR" as const,
+      total_amount_minor: 10000,
+      tax_amount_minor: 1000,
+      valid_until: "2099-01-01T00:00:00Z",
+      operator_legal_name: "Factual Air Limited",
+      aircraft_registration: "EI-REAL",
+      aircraft_manufacturer: "Cessna",
+      aircraft_model: "Citation",
+      aircraft_category: "LIGHT_JET",
+      included_services: null,
+      excluded_services: null,
+      cancellation_policy: null,
+      created_at: "2026-08-25T00:00:00Z",
+      updated_at: "2026-08-25T00:00:00Z",
+      response_audience: "customer" as const,
+    };
+    listTripRequestOffers.mockResolvedValueOnce([offer]);
+    selectOffer.mockResolvedValueOnce({ ...offer, status: "SELECTED" });
+    render(<PortalTripRequestDetailPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Select offer" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Select this offer" }));
+    await waitFor(() =>
+      expect(selectOffer).toHaveBeenCalledWith(TRIP.id, offer.id, "org-1"),
+    );
+    expect(await screen.findByText("Selected")).toBeTruthy();
+    expect(screen.getByText("SUBMITTED")).toBeTruthy();
+  });
   it("keeps the trip detail rendered when the isolated offers read fails", async () => {
     getTripRequest.mockResolvedValueOnce(TRIP);
     getAirport.mockRejectedValue(new ApiError(404, "not_found", "x", "client"));

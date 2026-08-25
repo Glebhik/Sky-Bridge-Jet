@@ -227,6 +227,27 @@ describe("portalApi — Phase 9.4.A customer offer reads", () => {
   });
 });
 
+describe("portalApi — Phase 9.4.B customer offer selection", () => {
+  it("POSTs the exact path with CSRF + org context and no request body", async () => {
+    document.cookie = "sbj_csrf=csrf-value";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse({ id: "offer-id", status: "SELECTED" }),
+      );
+    await portalApi.selectOffer("trip-id", "offer-id", "org-42");
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toBe(
+      "/api/proxy/trip-requests/trip-id/offers/offer-id/select",
+    );
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBeUndefined();
+    expect((init?.headers as Headers).get("content-type")).toBeNull();
+    expect((init?.headers as Headers).get("x-csrf-token")).toBe("csrf-value");
+    expect((init?.headers as Headers).get("x-organization-id")).toBe("org-42");
+  });
+});
+
 describe("portalApi — Phase 9.3.B customer write journey", () => {
   const TRIP_ID = "b32413c8-88e9-4c05-89e5-78afb14f5eb4";
 

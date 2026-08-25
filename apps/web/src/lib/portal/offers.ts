@@ -39,6 +39,20 @@ export function offerAvailability(status: string): OfferAvailability {
   return "unavailable";
 }
 
+/** Browser affordance only; the API remains authoritative and repeats every check. */
+export function canSelectCustomerOffer(
+  tripStatus: string,
+  offer: CustomerOffer,
+  offers: readonly CustomerOffer[],
+  now = Date.now(),
+): boolean {
+  if (tripStatus !== "SUBMITTED" || offer.status !== "SUBMITTED") return false;
+  if (offers.some((candidate) => candidate.status === "SELECTED")) return false;
+  if (offer.valid_until === null) return false;
+  const validUntil = Date.parse(offer.valid_until);
+  return Number.isFinite(validUntil) && validUntil > now;
+}
+
 export function serviceItems(value: string | null): readonly string[] {
   return (
     value
