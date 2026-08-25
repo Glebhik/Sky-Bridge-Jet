@@ -85,11 +85,59 @@ export interface CustomerBooking {
   readonly created_at: string;
 }
 
-/** Customer-safe trip-request view (`/me/trip-requests` item). */
+/** One leg of a trip request (as returned by the customer trip-request read models). */
+export interface TripLeg {
+  readonly id: string;
+  readonly sequence: number;
+  readonly origin_airport_id: string;
+  readonly destination_airport_id: string;
+  readonly departure_at: string;
+  readonly origin_timezone: string;
+  readonly destination_timezone: string;
+  readonly passenger_count: number;
+}
+
+/** A passenger attached to a trip request (the customer's own passenger, name only). */
+export interface TripPassenger {
+  readonly id: string;
+  readonly first_name: string;
+  readonly last_name: string;
+}
+
+/** Customer-supplied trip requirements (notes/flags only; no internal fields). */
+export interface TripRequirements {
+  readonly baggage_notes: string | null;
+  readonly catering_notes: string | null;
+  readonly ground_transport_requested: boolean;
+  readonly special_assistance_notes: string | null;
+  readonly customer_notes: string | null;
+  readonly pet_present: boolean;
+}
+
+/**
+ * Customer-safe trip-request view. Both `/me/trip-requests` (list) and
+ * `/trip-requests/{id}` (detail) return this same shape; it mirrors the API's
+ * `TripRequestResponse` and carries no operator/platform or internal-audit fields.
+ */
 export interface CustomerTripRequest {
   readonly id: string;
   readonly status: string;
+  readonly version: number;
+  readonly legs: readonly TripLeg[];
+  readonly passengers: readonly TripPassenger[];
+  readonly requirements: TripRequirements;
   readonly created_at: string;
+  readonly updated_at: string;
+}
+
+/** Public airport reference (`/airports/{id}`) — only the fields used to label a leg. */
+export interface Airport {
+  readonly id: string;
+  readonly icao_code: string;
+  readonly iata_code: string | null;
+  readonly name: string;
+  readonly city: string;
+  readonly country_code: string;
 }
 
 /** Customer-safe payment-status view (`/me/payments` item) — status only. */

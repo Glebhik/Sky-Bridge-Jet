@@ -1,6 +1,7 @@
 import { ApiError, apiErrorFromResponse } from "@/lib/api/errors";
 import type {
   AccountRecoveryResponse,
+  Airport,
   CustomerBooking,
   CustomerPayment,
   CustomerTripRequest,
@@ -186,6 +187,13 @@ export const portalApi = {
       organizationId,
       signal,
     }),
+  getTripRequest: (id: string, organizationId?: string, signal?: AbortSignal) =>
+    apiRequest<CustomerTripRequest>(`trip-requests/${id}`, {
+      organizationId,
+      signal,
+    }),
+  getAirport: (id: string, signal?: AbortSignal) =>
+    apiRequest<Airport>(`airports/${id}`, { signal }),
   listBookings: (organizationId?: string, signal?: AbortSignal) =>
     apiRequest<readonly CustomerBooking[]>("me/bookings", {
       organizationId,

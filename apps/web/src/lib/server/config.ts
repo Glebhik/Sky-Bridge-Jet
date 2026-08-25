@@ -43,6 +43,33 @@ export const PROXY_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
+ * A single closed, parameterized allow-list entry. `segments` is matched against the
+ * request path one segment at a time: a literal segment must match exactly, and the
+ * `":uuid"` placeholder matches exactly one path segment that is a canonical UUID (never an
+ * empty, encoded, or multi-segment value — those are already rejected upstream in the
+ * proxy's per-segment safety check). The segment count must match exactly, so no extra or
+ * missing segment is ever accepted. This is NOT prefix matching, a wildcard, or a
+ * passthrough: it only reaches the specific customer resource-by-id reads named below.
+ */
+export interface ProxyPattern {
+  readonly segments: readonly string[];
+  readonly methods: readonly string[];
+}
+
+/**
+ * Closed parameterized read routes for the Phase 9.3 customer portal. The customer's own
+ * trip-request detail (`GET /trip-requests/{id}`) and the public airport lookups used to
+ * render its legs (`GET /airports/{id}`) both live behind an `{id}` path parameter that the
+ * exact-string {@link PROXY_ALLOWLIST} cannot express. Each `{id}` must be a UUID; only
+ * `GET` is permitted (reads only — no mutation). Nothing else is added: the same closed
+ * policy, extended to exactly two resource-by-id GET families.
+ */
+export const PROXY_PATTERN_ALLOWLIST: readonly ProxyPattern[] = [
+  { segments: ["trip-requests", ":uuid"], methods: ["GET"] },
+  { segments: ["airports", ":uuid"], methods: ["GET"] },
+];
+
+/**
  * Resolve the trusted upstream API origin (scheme + host + optional port only). Throws if
  * the configured value is not an absolute http(s) origin, so a misconfiguration fails
  * closed at request time rather than silently forwarding somewhere unexpected.

@@ -1,7 +1,8 @@
 /**
- * The Customer Portal shell navigation. Scope is the Phase 9.1 shell only: a dashboard
- * home plus honest placeholders for the surfaces the accepted design names (bookings,
- * offers, account). The feature workflows behind them are later phases.
+ * The Customer Portal navigation: a dashboard home, the Phase 9.3.A read-only trip-requests
+ * surface, and honest placeholders for the remaining accepted-design surfaces (bookings,
+ * offers, account). The create/manage workflows behind trip requests, and the offer/booking
+ * feature workflows, are later phases.
  */
 export interface PortalNavItem {
   readonly href: string;
@@ -10,6 +11,7 @@ export interface PortalNavItem {
 
 export const PORTAL_NAV_ITEMS: readonly PortalNavItem[] = [
   { href: "/portal", label: "Dashboard" },
+  { href: "/portal/trip-requests", label: "Trip requests" },
   { href: "/portal/bookings", label: "Bookings" },
   { href: "/portal/offers", label: "Offers" },
   { href: "/portal/account", label: "Account" },
