@@ -16,6 +16,7 @@ import {
 } from "@/lib/portal/trip-requests";
 import { canCancelTripRequest } from "@/lib/portal/trip-management";
 import { TripCancelPanel } from "@/components/portal/TripCancelPanel";
+import { OffersSection } from "@/components/portal/OffersSection";
 import {
   Alert,
   Badge,
@@ -232,6 +233,11 @@ export default function PortalTripRequestDetailPage() {
           ))}
         </ol>
       </Card>
+
+      <OffersSection
+        tripRequestId={trip.id}
+        organizationId={activeOrganizationId ?? undefined}
+      />
 
       {trip.passengers.length > 0 ? (
         <Card>
