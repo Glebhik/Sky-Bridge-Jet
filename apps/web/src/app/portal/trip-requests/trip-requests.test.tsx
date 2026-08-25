@@ -11,6 +11,7 @@ const listTripRequests = vi.fn();
 const getTripRequest = vi.fn();
 const getAirport = vi.fn();
 const cancelTripRequest = vi.fn();
+const listTripRequestOffers = vi.fn();
 
 vi.mock("@/lib/api/client", () => ({
   portalApi: {
@@ -18,6 +19,7 @@ vi.mock("@/lib/api/client", () => ({
     getTripRequest: (...a: unknown[]) => getTripRequest(...a),
     getAirport: (...a: unknown[]) => getAirport(...a),
     cancelTripRequest: (...a: unknown[]) => cancelTripRequest(...a),
+    listTripRequestOffers: (...a: unknown[]) => listTripRequestOffers(...a),
   },
 }));
 
@@ -76,6 +78,8 @@ beforeEach(() => {
   getTripRequest.mockReset();
   getAirport.mockReset();
   cancelTripRequest.mockReset();
+  listTripRequestOffers.mockReset();
+  listTripRequestOffers.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -137,6 +141,21 @@ describe("PortalTripRequestsPage (list)", () => {
 });
 
 describe("PortalTripRequestDetailPage", () => {
+  it("keeps the trip detail rendered when the isolated offers read fails", async () => {
+    getTripRequest.mockResolvedValueOnce(TRIP);
+    getAirport.mockRejectedValue(new ApiError(404, "not_found", "x", "client"));
+    listTripRequestOffers.mockRejectedValueOnce(
+      new ApiError(500, "internal", "raw backend body", "server"),
+    );
+    render(<PortalTripRequestDetailPage />);
+    expect(
+      await screen.findByRole("heading", { name: "Request B32413C8" }),
+    ).toBeTruthy();
+    expect(await screen.findByText("Offers couldn’t be loaded")).toBeTruthy();
+    expect(screen.getByText("SUBMITTED")).toBeTruthy();
+    expect(screen.queryByText("raw backend body")).toBeNull();
+  });
+
   it("renders real trip fields and resolves airport labels, with only a Cancel action", async () => {
     getTripRequest.mockResolvedValueOnce(TRIP);
     getAirport.mockImplementation((id: string) =>

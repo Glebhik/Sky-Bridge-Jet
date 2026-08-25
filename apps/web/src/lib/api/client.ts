@@ -3,6 +3,7 @@ import type {
   AccountRecoveryResponse,
   Airport,
   CustomerBooking,
+  CustomerOffer,
   CustomerPayment,
   CustomerTripRequest,
   LoginResponse,
@@ -195,6 +196,15 @@ export const portalApi = {
       organizationId,
       signal,
     }),
+  listTripRequestOffers: (
+    tripRequestId: string,
+    organizationId?: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<readonly CustomerOffer[]>(
+      `trip-requests/${tripRequestId}/offers`,
+      { organizationId, signal },
+    ),
   getAirport: (id: string, signal?: AbortSignal) =>
     apiRequest<Airport>(`airports/${id}`, { signal }),
   // Phase 9.3.B write journey. Each mutation goes through the same same-origin proxy, carries

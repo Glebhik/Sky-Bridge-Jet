@@ -130,6 +130,28 @@ export interface CustomerTripRequest {
   readonly updated_at: string;
 }
 
+/** Customer-safe published offer returned by the audience-discriminated trip offer list. */
+export interface CustomerOffer {
+  readonly id: string;
+  readonly trip_request_id: string;
+  readonly status: "SUBMITTED" | "EXPIRED" | "SELECTED";
+  readonly currency: "EUR" | "GBP" | "USD";
+  readonly total_amount_minor: number;
+  readonly tax_amount_minor: number;
+  readonly valid_until: string | null;
+  readonly operator_legal_name: string;
+  readonly aircraft_registration: string;
+  readonly aircraft_manufacturer: string;
+  readonly aircraft_model: string;
+  readonly aircraft_category: string;
+  readonly included_services: string | null;
+  readonly excluded_services: string | null;
+  readonly cancellation_policy: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+  readonly response_audience: "customer";
+}
+
 /** Public airport reference (`/airports/{id}`) — only the fields used to label a leg. */
 export interface Airport {
   readonly id: string;

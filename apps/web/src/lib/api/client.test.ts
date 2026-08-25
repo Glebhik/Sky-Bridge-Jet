@@ -208,6 +208,25 @@ describe("portalApi — Phase 9.3.A trip-request reads", () => {
   });
 });
 
+describe("portalApi — Phase 9.4.A customer offer reads", () => {
+  const TRIP_ID = "b32413c8-88e9-4c05-89e5-78afb14f5eb4";
+  it("GETs the exact same-origin path with org context and no CSRF/storage", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse([]));
+    await portalApi.listTripRequestOffers(TRIP_ID, "org-42");
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toBe(`/api/proxy/trip-requests/${TRIP_ID}/offers`);
+    expect(init?.method ?? "GET").toBe("GET");
+    expect(init?.credentials).toBe("same-origin");
+    expect(init?.cache).toBe("no-store");
+    expect((init?.headers as Headers).get("x-organization-id")).toBe("org-42");
+    expect((init?.headers as Headers).get("x-csrf-token")).toBeNull();
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
+  });
+});
+
 describe("portalApi — Phase 9.3.B customer write journey", () => {
   const TRIP_ID = "b32413c8-88e9-4c05-89e5-78afb14f5eb4";
 

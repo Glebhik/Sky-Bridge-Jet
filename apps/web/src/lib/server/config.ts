@@ -30,7 +30,8 @@ export const UPSTREAM_API_PREFIX = "/api/v1";
  * a DRAFT trip request, and (as a parameterized entry below) submitting that same DRAFT — plus
  * the `airports` *collection* read the airport picker needs. The authoritative customer is
  * still derived server-side from the authenticated principal + validated active organization;
- * the browser never sends `customer_id`. No cancel/offers/booking/payment route is added.
+ * the browser never sends `customer_id`. Phase 9.3.C adds cancellation below, and Phase
+ * 9.4.A adds only the customer-safe trip-scoped published-offer GET described below.
  */
 export const PROXY_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   "auth/me": ["GET"],
@@ -73,15 +74,17 @@ export interface ProxyPattern {
  * render its legs (`GET /airports/{id}`) both live behind an `{id}` path parameter that the
  * exact-string {@link PROXY_ALLOWLIST} cannot express. Each `{id}` must be a UUID.
  *
- * Phase 9.3.B added the submit mutation; Phase 9.3.C adds exactly one more: cancelling the
+ * Phase 9.3.B added the submit mutation; Phase 9.3.C added exactly one more: cancelling the
  * customer's own trip request (`POST /trip-requests/{id}/cancel`). Both are three-segment
- * patterns with a literal trailing verb, so they can never widen the two-segment `{id}` GET
- * into a passthrough and never reach `offers` or `booking` — those remain unlisted (rejected
- * 404). This is NOT prefix matching, a wildcard, or a passthrough; the segment count must
- * match exactly, and each verb is bound to exactly one method.
+ * patterns with a literal trailing verb. Phase 9.4.A exposes only customer-safe, trip-scoped
+ * published offer reads through `GET /trip-requests/{id}/offers`. Offer selection, operator
+ * offer mutations, booking mutations, and payment mutations remain unexposed. This is NOT
+ * prefix matching, a wildcard, or a passthrough; the segment count must match exactly, and
+ * each route is bound to exactly its listed method.
  */
 export const PROXY_PATTERN_ALLOWLIST: readonly ProxyPattern[] = [
   { segments: ["trip-requests", ":uuid"], methods: ["GET"] },
+  { segments: ["trip-requests", ":uuid", "offers"], methods: ["GET"] },
   { segments: ["trip-requests", ":uuid", "submit"], methods: ["POST"] },
   { segments: ["trip-requests", ":uuid", "cancel"], methods: ["POST"] },
   { segments: ["airports", ":uuid"], methods: ["GET"] },

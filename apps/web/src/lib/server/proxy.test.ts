@@ -64,6 +64,38 @@ describe("validateProxyRequest — closed allow-list", () => {
   });
 });
 
+describe("Phase 9.4.A offer reads — exact closed pattern", () => {
+  const UUID = "b32413c8-88e9-4c05-89e5-78afb14f5eb4";
+  it("allows only GET on the exact trip offer collection", () => {
+    expect(
+      validateProxyRequest(["trip-requests", UUID, "offers"], "GET"),
+    ).toMatchObject({ ok: true, path: `trip-requests/${UUID}/offers` });
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"])
+      expect(
+        validateProxyRequest(["trip-requests", UUID, "offers"], method),
+      ).toMatchObject({ ok: false, status: 405 });
+  });
+  it("rejects malformed, extended, mutation, encoded, and adjacent families", () => {
+    const rejected = [
+      ["trip-requests", "not-a-uuid", "offers"],
+      ["trip-requests", UUID, "offers", UUID],
+      ["trip-requests", UUID, "offers", UUID, "select"],
+      ["trip-requests", UUID, "offers%2fanything"],
+      ["trip-requests", UUID, "offers%5canything"],
+      ["trip-requests", "..", "offers"],
+      ["trip-requests-extra", UUID, "offers"],
+      ["offers"],
+      ["bookings"],
+      ["payments"],
+    ];
+    for (const segments of rejected)
+      expect(validateProxyRequest(segments, "GET")).toMatchObject({
+        ok: false,
+        status: 404,
+      });
+  });
+});
+
 describe("Phase 9.2.A auth account-entry routes — exact allow-list", () => {
   // Every newly allow-listed path (including the two-segment resend and reset/confirm)
   // forwards on POST, rejects other methods with 405, and no `auth/*` wildcard leaks.
@@ -156,8 +188,8 @@ describe("Phase 9.3.A parameterized reads — closed pattern allow-list", () => 
 
   it("rejects extra segments and unexposed mutation sub-routes (no passthrough)", () => {
     // A trailing segment must not widen the {id} GET into a passthrough. `submit` (9.3.B) and
-    // `cancel` (9.3.C) are dedicated POST routes covered separately; offers/booking stay 404.
-    for (const extra of ["extra", "offers", "booking"]) {
+    // `cancel` (9.3.C) and offers (9.4.A GET-only) are covered separately; unknowns stay 404.
+    for (const extra of ["extra", "booking"]) {
       expect(
         validateProxyRequest(["trip-requests", UUID, extra], "GET"),
       ).toMatchObject({ ok: false, status: 404 });
@@ -268,10 +300,16 @@ describe("Phase 9.3.B customer write routes — closed allow-list", () => {
     }
   });
 
-  it("rejects offers / booking and any other trip sub-route (never exposed)", () => {
+  it("keeps offer writes closed and rejects every other trip sub-route", () => {
     // `cancel` became a dedicated Phase 9.3.C POST route (covered separately); everything
     // else under a trip stays fully unlisted (404 on any method).
-    for (const sub of ["offers", "booking", "quotes", "documents"]) {
+    expect(
+      validateProxyRequest(["trip-requests", UUID, "offers"], "POST"),
+    ).toMatchObject({ ok: false, status: 405 });
+    expect(
+      validateProxyRequest(["trip-requests", UUID, "offers"], "GET"),
+    ).toMatchObject({ ok: true });
+    for (const sub of ["booking", "quotes", "documents"]) {
       expect(
         validateProxyRequest(["trip-requests", UUID, sub], "POST"),
       ).toMatchObject({ ok: false, status: 404 });
@@ -363,7 +401,10 @@ describe("Phase 9.3.C cancel route — closed pattern allow-list", () => {
   });
 
   it("rejects offers / booking and an extra segment after cancel (404)", () => {
-    for (const sub of ["offers", "booking"]) {
+    expect(
+      validateProxyRequest(["trip-requests", UUID, "offers"], "POST"),
+    ).toMatchObject({ ok: false, status: 405 });
+    for (const sub of ["booking"]) {
       expect(
         validateProxyRequest(["trip-requests", UUID, sub], "POST"),
       ).toMatchObject({ ok: false, status: 404 });
