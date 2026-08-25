@@ -79,7 +79,6 @@ describe("Phase 9.4.A offer reads — exact closed pattern", () => {
     const rejected = [
       ["trip-requests", "not-a-uuid", "offers"],
       ["trip-requests", UUID, "offers", UUID],
-      ["trip-requests", UUID, "offers", UUID, "select"],
       ["trip-requests", UUID, "offers%2fanything"],
       ["trip-requests", UUID, "offers%5canything"],
       ["trip-requests", "..", "offers"],
@@ -90,6 +89,36 @@ describe("Phase 9.4.A offer reads — exact closed pattern", () => {
     ];
     for (const segments of rejected)
       expect(validateProxyRequest(segments, "GET")).toMatchObject({
+        ok: false,
+        status: 404,
+      });
+  });
+});
+
+describe("Phase 9.4.B offer selection — exact closed pattern", () => {
+  const TRIP = "b32413c8-88e9-4c05-89e5-78afb14f5eb4";
+  const OFFER = "11111111-2222-4333-8444-555555555555";
+  it("allows only POST on the exact selection path", () => {
+    const path = ["trip-requests", TRIP, "offers", OFFER, "select"];
+    expect(validateProxyRequest(path, "POST")).toMatchObject({
+      ok: true,
+      path: path.join("/"),
+    });
+    for (const method of ["GET", "PUT", "PATCH", "DELETE"])
+      expect(validateProxyRequest(path, method)).toMatchObject({
+        ok: false,
+        status: 405,
+      });
+  });
+  it("rejects malformed UUIDs, extra segments, and adjacent offer mutations", () => {
+    for (const path of [
+      ["trip-requests", "bad", "offers", OFFER, "select"],
+      ["trip-requests", TRIP, "offers", "bad", "select"],
+      ["trip-requests", TRIP, "offers", OFFER, "select", "extra"],
+      ["trip-requests", TRIP, "offers", OFFER, "withdraw"],
+      ["trip-requests", TRIP, "offers", OFFER],
+    ])
+      expect(validateProxyRequest(path, "POST")).toMatchObject({
         ok: false,
         status: 404,
       });

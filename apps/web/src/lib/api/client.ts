@@ -205,6 +205,16 @@ export const portalApi = {
       `trip-requests/${tripRequestId}/offers`,
       { organizationId, signal },
     ),
+  selectOffer: (
+    tripRequestId: string,
+    offerId: string,
+    organizationId?: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<CustomerOffer>(
+      `trip-requests/${tripRequestId}/offers/${offerId}/select`,
+      { method: "POST", organizationId, signal },
+    ),
   getAirport: (id: string, signal?: AbortSignal) =>
     apiRequest<Airport>(`airports/${id}`, { signal }),
   // Phase 9.3.B write journey. Each mutation goes through the same same-origin proxy, carries
