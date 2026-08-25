@@ -140,20 +140,24 @@ describe("Phase 9.3.A parameterized reads — closed pattern allow-list", () => 
     }
   });
 
-  it("rejects the collection path without an id (pattern needs exactly two segments)", () => {
+  it("does not serve a {id} read via the one-segment collection path", () => {
+    // The two-segment {id} GET pattern never matches a bare collection. Since Phase 9.3.B the
+    // collections have their OWN exact entries (trip-requests POST-only → GET is 405; airports
+    // GET → allowed), so a bare collection is governed by that entry, not the read pattern.
     expect(validateProxyRequest(["trip-requests"], "GET")).toMatchObject({
       ok: false,
-      status: 404,
+      status: 405,
     });
     expect(validateProxyRequest(["airports"], "GET")).toMatchObject({
-      ok: false,
-      status: 404,
+      ok: true,
+      path: "airports",
     });
   });
 
-  it("rejects extra segments and known mutation sub-routes (no passthrough)", () => {
-    // A trailing segment must not match — guards against reaching submit/cancel/offers.
-    for (const extra of ["extra", "submit", "cancel", "offers", "booking"]) {
+  it("rejects extra segments and unexposed mutation sub-routes (no passthrough)", () => {
+    // A trailing segment must not widen the {id} GET into a passthrough. `submit` became a
+    // dedicated Phase 9.3.B POST route (covered separately); cancel/offers/booking stay 404.
+    for (const extra of ["extra", "cancel", "offers", "booking"]) {
       expect(
         validateProxyRequest(["trip-requests", UUID, extra], "GET"),
       ).toMatchObject({ ok: false, status: 404 });
@@ -205,6 +209,128 @@ describe("Phase 9.3.A parameterized reads — closed pattern allow-list", () => 
       validateProxyRequest(["trip-requests-x", UUID], "GET"),
     ).toMatchObject({ ok: false, status: 404 });
     expect(validateProxyRequest(["airportsx", UUID], "GET")).toMatchObject({
+      ok: false,
+      status: 404,
+    });
+  });
+});
+
+describe("Phase 9.3.B customer write routes — closed allow-list", () => {
+  const UUID = "b32413c8-88e9-4c05-89e5-78afb14f5eb4";
+
+  it("accepts the exact create mutations (POST passengers, POST trip-requests)", () => {
+    expect(validateProxyRequest(["passengers"], "POST")).toMatchObject({
+      ok: true,
+      path: "passengers",
+    });
+    expect(validateProxyRequest(["trip-requests"], "POST")).toMatchObject({
+      ok: true,
+      path: "trip-requests",
+    });
+  });
+
+  it("accepts POST submit on a valid UUID (the one parameterized mutation)", () => {
+    expect(
+      validateProxyRequest(["trip-requests", UUID, "submit"], "POST"),
+    ).toMatchObject({ ok: true, path: `trip-requests/${UUID}/submit` });
+  });
+
+  it("accepts the airports collection GET (picker source)", () => {
+    expect(validateProxyRequest(["airports"], "GET")).toMatchObject({
+      ok: true,
+      path: "airports",
+    });
+  });
+
+  it("rejects wrong methods on the create mutations with 405", () => {
+    for (const method of ["GET", "PUT", "PATCH", "DELETE"]) {
+      expect(validateProxyRequest(["passengers"], method)).toMatchObject({
+        ok: false,
+        status: 405,
+      });
+      expect(validateProxyRequest(["trip-requests"], method)).toMatchObject({
+        ok: false,
+        status: 405,
+      });
+    }
+    // airports collection is read-only.
+    expect(validateProxyRequest(["airports"], "POST")).toMatchObject({
+      ok: false,
+      status: 405,
+    });
+  });
+
+  it("rejects wrong methods on submit with 405 (POST-only)", () => {
+    for (const method of ["GET", "PUT", "PATCH", "DELETE"]) {
+      expect(
+        validateProxyRequest(["trip-requests", UUID, "submit"], method),
+      ).toMatchObject({ ok: false, status: 405 });
+    }
+  });
+
+  it("rejects cancel / offers / booking and any other trip sub-route (never exposed)", () => {
+    for (const sub of ["cancel", "offers", "booking", "quotes", "documents"]) {
+      expect(
+        validateProxyRequest(["trip-requests", UUID, sub], "POST"),
+      ).toMatchObject({ ok: false, status: 404 });
+      expect(
+        validateProxyRequest(["trip-requests", UUID, sub], "GET"),
+      ).toMatchObject({ ok: false, status: 404 });
+    }
+  });
+
+  it("rejects an extra segment after submit (no prefix widening)", () => {
+    expect(
+      validateProxyRequest(["trip-requests", UUID, "submit", "extra"], "POST"),
+    ).toMatchObject({ ok: false, status: 404 });
+  });
+
+  it("rejects submit on a non-UUID id", () => {
+    for (const bad of ["not-a-uuid", "123", `${UUID}x`]) {
+      expect(
+        validateProxyRequest(["trip-requests", bad, "submit"], "POST"),
+      ).toMatchObject({ ok: false, status: 404 });
+    }
+  });
+
+  it("rejects a POST under passengers/<anything> (no passenger sub-routes)", () => {
+    expect(validateProxyRequest(["passengers", UUID], "POST")).toMatchObject({
+      ok: false,
+      status: 404,
+    });
+    expect(validateProxyRequest(["passengers", "roster"], "GET")).toMatchObject(
+      {
+        ok: false,
+        status: 404,
+      },
+    );
+  });
+
+  it("rejects encoded slash/backslash, dot, dot-dot and encoded traversal on submit", () => {
+    for (const bad of [
+      `${UUID}%2f..`,
+      `${UUID}%5c..`,
+      ".",
+      "..",
+      "%2e%2e",
+      `${UUID}%2fsubmit`,
+    ]) {
+      expect(
+        validateProxyRequest(["trip-requests", bad, "submit"], "POST"),
+      ).toMatchObject({ ok: false });
+    }
+  });
+
+  it("does not collide on prefix-similar families for the new routes", () => {
+    expect(validateProxyRequest(["passengers-x"], "POST")).toMatchObject({
+      ok: false,
+      status: 404,
+    });
+    expect(validateProxyRequest(["trip-requests-x"], "POST")).toMatchObject({
+      ok: false,
+      status: 404,
+    });
+    expect(validateProxyRequest(["airportsx"], "GET")).toMatchObject({
       ok: false,
       status: 404,
     });

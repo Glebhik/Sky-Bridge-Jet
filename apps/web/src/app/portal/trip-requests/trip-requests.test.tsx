@@ -98,6 +98,21 @@ describe("PortalTripRequestsPage (list)", () => {
     expect(await screen.findByText("No trip requests yet")).toBeTruthy();
   });
 
+  it("offers a New trip request CTA linking to the create page", async () => {
+    listTripRequests.mockResolvedValueOnce([]);
+    render(<PortalTripRequestsPage />);
+    const cta = await screen.findByRole("link", { name: "New trip request" });
+    expect(cta.getAttribute("href")).toBe("/portal/trip-requests/new");
+  });
+
+  it("hides the New trip request CTA without a customer context", async () => {
+    orgContext = { activeOrganizationId: null, hasCustomerContext: false };
+    listTripRequests.mockResolvedValue([]);
+    render(<PortalTripRequestsPage />);
+    await screen.findByText("No active customer account");
+    expect(screen.queryByRole("link", { name: "New trip request" })).toBeNull();
+  });
+
   it("shows a forbidden error distinctly from a generic error", async () => {
     listTripRequests.mockRejectedValueOnce(
       new ApiError(403, "forbidden", "x", "forbidden"),

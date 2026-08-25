@@ -8,7 +8,10 @@ import type {
   LoginResponse,
   MeResponse,
   MessageResponse,
+  PassengerCreateRequest,
+  PassengerRecord,
   RegistrationResponse,
+  TripRequestCreateRequest,
   User,
 } from "@/lib/api/types";
 
@@ -194,6 +197,48 @@ export const portalApi = {
     }),
   getAirport: (id: string, signal?: AbortSignal) =>
     apiRequest<Airport>(`airports/${id}`, { signal }),
+  // Phase 9.3.B write journey. Each mutation goes through the same same-origin proxy, carries
+  // the readable CSRF cookie as a header (via apiRequest), and forwards the validated active
+  // organization so the API can derive the authoritative customer. NONE send `customer_id`.
+  //
+  // The airport picker uses `listAirports` (the real `GET /airports` contract, which takes no
+  // query parameters and returns all active airports); filtering/search happens client-side.
+  listAirports: (signal?: AbortSignal) =>
+    apiRequest<readonly Airport[]>("airports", { signal }),
+  createPassenger: (
+    body: PassengerCreateRequest,
+    organizationId?: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<PassengerRecord>("passengers", {
+      method: "POST",
+      body,
+      organizationId,
+      signal,
+    }),
+  createTripRequest: (
+    body: TripRequestCreateRequest,
+    organizationId?: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<CustomerTripRequest>("trip-requests", {
+      method: "POST",
+      body,
+      organizationId,
+      signal,
+    }),
+  submitTripRequest: (
+    id: string,
+    expectedVersion: number,
+    organizationId?: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<CustomerTripRequest>(`trip-requests/${id}/submit`, {
+      method: "POST",
+      body: { expected_version: expectedVersion },
+      organizationId,
+      signal,
+    }),
   listBookings: (organizationId?: string, signal?: AbortSignal) =>
     apiRequest<readonly CustomerBooking[]>("me/bookings", {
       organizationId,

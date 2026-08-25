@@ -25,6 +25,12 @@ export const UPSTREAM_API_PREFIX = "/api/v1";
  * "my" reads) plus the Phase 9.2.A public account-entry contracts (register, verify,
  * verification resend, and password-reset request/confirm). Every entry is an exact path;
  * there is no `auth/*` wildcard and no dynamic passthrough.
+ *
+ * Phase 9.3.B adds exactly three customer *mutation* entries — creating a passenger, creating
+ * a DRAFT trip request, and (as a parameterized entry below) submitting that same DRAFT — plus
+ * the `airports` *collection* read the airport picker needs. The authoritative customer is
+ * still derived server-side from the authenticated principal + validated active organization;
+ * the browser never sends `customer_id`. No cancel/offers/booking/payment route is added.
  */
 export const PROXY_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   "auth/me": ["GET"],
@@ -40,6 +46,11 @@ export const PROXY_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   "me/trip-requests": ["GET"],
   "me/bookings": ["GET"],
   "me/payments": ["GET"],
+  // Phase 9.3.B customer write journey (create DRAFT → submit same DRAFT). Exact paths only.
+  passengers: ["POST"],
+  "trip-requests": ["POST"],
+  // Public airport reference collection used by the origin/destination picker (read only).
+  airports: ["GET"],
 };
 
 /**
@@ -57,15 +68,20 @@ export interface ProxyPattern {
 }
 
 /**
- * Closed parameterized read routes for the Phase 9.3 customer portal. The customer's own
+ * Closed parameterized routes for the Phase 9.3 customer portal. The customer's own
  * trip-request detail (`GET /trip-requests/{id}`) and the public airport lookups used to
  * render its legs (`GET /airports/{id}`) both live behind an `{id}` path parameter that the
- * exact-string {@link PROXY_ALLOWLIST} cannot express. Each `{id}` must be a UUID; only
- * `GET` is permitted (reads only — no mutation). Nothing else is added: the same closed
- * policy, extended to exactly two resource-by-id GET families.
+ * exact-string {@link PROXY_ALLOWLIST} cannot express. Each `{id}` must be a UUID.
+ *
+ * Phase 9.3.B adds exactly one parameterized *mutation* entry: submitting the customer's own
+ * DRAFT (`POST /trip-requests/{id}/submit`). It is a three-segment pattern with a literal
+ * trailing `submit`, so it can never widen the two-segment `{id}` GET into a passthrough and
+ * never reaches `cancel`, `offers`, or `booking` — those remain unlisted (rejected 404). This
+ * is NOT prefix matching, a wildcard, or a passthrough; the segment count must match exactly.
  */
 export const PROXY_PATTERN_ALLOWLIST: readonly ProxyPattern[] = [
   { segments: ["trip-requests", ":uuid"], methods: ["GET"] },
+  { segments: ["trip-requests", ":uuid", "submit"], methods: ["POST"] },
   { segments: ["airports", ":uuid"], methods: ["GET"] },
 ];
 
