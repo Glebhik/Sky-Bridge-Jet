@@ -239,6 +239,20 @@ export const portalApi = {
       organizationId,
       signal,
     }),
+  // Phase 9.3.C. Cancel the customer's own trip request with the optimistic version it was
+  // last read at. Same proxy/CSRF/org conventions as submit; no customer_id, no storage.
+  cancelTripRequest: (
+    id: string,
+    expectedVersion: number,
+    organizationId?: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<CustomerTripRequest>(`trip-requests/${id}/cancel`, {
+      method: "POST",
+      body: { expected_version: expectedVersion },
+      organizationId,
+      signal,
+    }),
   listBookings: (organizationId?: string, signal?: AbortSignal) =>
     apiRequest<readonly CustomerBooking[]>("me/bookings", {
       organizationId,

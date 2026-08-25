@@ -293,6 +293,34 @@ describe("portalApi — Phase 9.3.B customer write journey", () => {
     expect("customer_id" in body).toBe(false);
   });
 
+  it("cancelTripRequest POSTs the exact id/cancel path with expected_version and NO customer_id", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse({ id: TRIP_ID, status: "CANCELLED", version: 3 }),
+      );
+    const result = await portalApi.cancelTripRequest(TRIP_ID, 2, "org-42");
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toBe(`/api/proxy/trip-requests/${TRIP_ID}/cancel`);
+    expect(init?.method).toBe("POST");
+    expect(init?.credentials).toBe("same-origin");
+    expect((init?.headers as Headers).get("x-organization-id")).toBe("org-42");
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body).toEqual({ expected_version: 2 });
+    expect("customer_id" in body).toBe(false);
+    // The updated TripRequest parses normally.
+    expect(result).toMatchObject({ status: "CANCELLED", version: 3 });
+  });
+
+  it("cancelTripRequest does not write to browser storage", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({ id: TRIP_ID, status: "CANCELLED", version: 3 }),
+    );
+    await portalApi.cancelTripRequest(TRIP_ID, 2, "org-42");
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
+  });
+
   it("never writes credentials or ids to browser storage on writes", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() =>
       Promise.resolve(jsonResponse({ id: "p1" }, 201)),
