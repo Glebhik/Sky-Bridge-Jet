@@ -57,10 +57,10 @@ export default function PortalBookingsPage() {
           description="When you book a trip, it will appear here."
         />
       ) : (
-        <ul className="resource-list">
+        <ul className="resource-list trip-list">
           {state.data.map((booking) => (
             <li key={booking.id}>
-              <Card as="article">
+              <Card as="article" className="trip-card">
                 <div className="resource-list__row">
                   <span className="resource-list__reference">
                     {booking.reference}

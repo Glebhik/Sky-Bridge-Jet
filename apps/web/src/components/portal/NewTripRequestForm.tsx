@@ -246,26 +246,28 @@ export function NewTripRequestForm() {
         </Alert>
       ) : null}
 
-      <Card>
+      <Card className="form-section">
         <h2 className="card__title">Journey</h2>
-        <AirportPicker
-          id="trip-origin"
-          label="From"
-          airports={airports}
-          value={form.origin_airport_id}
-          onChange={(id) => patch({ origin_airport_id: id })}
-          error={fieldErrors.origin}
-          disabled={busy || started}
-        />
-        <AirportPicker
-          id="trip-destination"
-          label="To"
-          airports={airports}
-          value={form.destination_airport_id}
-          onChange={(id) => patch({ destination_airport_id: id })}
-          error={fieldErrors.destination}
-          disabled={busy || started}
-        />
+        <div className="journey-airports">
+          <AirportPicker
+            id="trip-origin"
+            label="From"
+            airports={airports}
+            value={form.origin_airport_id}
+            onChange={(id) => patch({ origin_airport_id: id })}
+            error={fieldErrors.origin}
+            disabled={busy || started}
+          />
+          <AirportPicker
+            id="trip-destination"
+            label="To"
+            airports={airports}
+            value={form.destination_airport_id}
+            onChange={(id) => patch({ destination_airport_id: id })}
+            error={fieldErrors.destination}
+            disabled={busy || started}
+          />
+        </div>
         <Field
           id="trip-departure"
           label="Departure"
@@ -283,7 +285,7 @@ export function NewTripRequestForm() {
         ) : null}
       </Card>
 
-      <Card>
+      <Card className="form-section">
         <h2 className="card__title">Passengers</h2>
         {form.passengers.map((passenger, index) => (
           <fieldset className="passenger-fieldset" key={index}>
@@ -291,34 +293,40 @@ export function NewTripRequestForm() {
               Passenger {index + 1}
               {isCreated(index) ? " (saved)" : ""}
             </legend>
-            <Field
-              id={`passenger-${index}-first`}
-              label="First name"
-              value={passenger.first_name}
-              onChange={(event) =>
-                patchPassenger(index, { first_name: event.target.value })
-              }
-              disabled={busy || isCreated(index)}
-            />
-            {fieldErrors[`passenger.${index}.first_name`] ? (
-              <p className="field__error" role="alert">
-                {fieldErrors[`passenger.${index}.first_name`]}
-              </p>
-            ) : null}
-            <Field
-              id={`passenger-${index}-last`}
-              label="Last name"
-              value={passenger.last_name}
-              onChange={(event) =>
-                patchPassenger(index, { last_name: event.target.value })
-              }
-              disabled={busy || isCreated(index)}
-            />
-            {fieldErrors[`passenger.${index}.last_name`] ? (
-              <p className="field__error" role="alert">
-                {fieldErrors[`passenger.${index}.last_name`]}
-              </p>
-            ) : null}
+            <div className="passenger-name-row">
+              <div>
+                <Field
+                  id={`passenger-${index}-first`}
+                  label="First name"
+                  value={passenger.first_name}
+                  onChange={(event) =>
+                    patchPassenger(index, { first_name: event.target.value })
+                  }
+                  disabled={busy || isCreated(index)}
+                />
+                {fieldErrors[`passenger.${index}.first_name`] ? (
+                  <p className="field__error" role="alert">
+                    {fieldErrors[`passenger.${index}.first_name`]}
+                  </p>
+                ) : null}
+              </div>
+              <div>
+                <Field
+                  id={`passenger-${index}-last`}
+                  label="Last name"
+                  value={passenger.last_name}
+                  onChange={(event) =>
+                    patchPassenger(index, { last_name: event.target.value })
+                  }
+                  disabled={busy || isCreated(index)}
+                />
+                {fieldErrors[`passenger.${index}.last_name`] ? (
+                  <p className="field__error" role="alert">
+                    {fieldErrors[`passenger.${index}.last_name`]}
+                  </p>
+                ) : null}
+              </div>
+            </div>
             <Field
               id={`passenger-${index}-dob`}
               label="Date of birth (optional)"
@@ -353,7 +361,7 @@ export function NewTripRequestForm() {
         ) : null}
       </Card>
 
-      <Card>
+      <Card className="form-section">
         <h2 className="card__title">Requirements (optional)</h2>
         <Field
           id="trip-baggage"
@@ -429,7 +437,7 @@ export function NewTripRequestForm() {
         </label>
       </Card>
 
-      <Card>
+      <Card className="form-section form-section--review">
         <h2 className="card__title">Review</h2>
         <dl className="detail-list">
           <div>

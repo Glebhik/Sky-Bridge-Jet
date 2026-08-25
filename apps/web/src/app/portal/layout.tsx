@@ -30,14 +30,16 @@ export default async function PortalLayout({
 
   if (session.status === "error") {
     return (
-      <main className="portal-main" id="portal-main">
-        <Container>
-          <Alert tone="error" title="We couldn’t load your account">
-            The service is temporarily unavailable. Please refresh to try again
-            — you have not been signed out.
-          </Alert>
-        </Container>
-      </main>
+      <div className="portal">
+        <main className="portal-main" id="portal-main">
+          <Container>
+            <Alert tone="error" title="We couldn’t load your account">
+              The service is temporarily unavailable. Please refresh to try
+              again — you have not been signed out.
+            </Alert>
+          </Container>
+        </main>
+      </div>
     );
   }
 

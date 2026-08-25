@@ -83,7 +83,11 @@ export function TripCancelPanel({
 
   if (mode === "confirming" || mode === "cancelling" || mode === "error") {
     return (
-      <div className="cancel-panel" role="group" aria-label="Cancel request">
+      <div
+        className="cancel-panel cancel-panel--confirm"
+        role="group"
+        aria-label="Cancel request"
+      >
         {mode === "error" && errorMessage ? (
           <Alert tone="error" title="We couldn’t cancel your request">
             {errorMessage}

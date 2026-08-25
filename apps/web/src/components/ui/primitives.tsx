@@ -34,11 +34,15 @@ export function PageHeading({
 export function Card({
   children,
   as: Tag = "section",
+  className,
 }: {
   children: ReactNode;
   as?: "section" | "article" | "div";
+  className?: string;
 }) {
-  return <Tag className="card">{children}</Tag>;
+  return (
+    <Tag className={className ? `card ${className}` : "card"}>{children}</Tag>
+  );
 }
 
 type BadgeTone = "neutral" | "info" | "success" | "warning" | "danger";
