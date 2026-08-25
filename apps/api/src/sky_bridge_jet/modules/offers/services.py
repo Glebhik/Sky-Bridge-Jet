@@ -254,6 +254,12 @@ class OperatorOfferService:
             raise _not_found("Trip request")
         return list(self.offers.list_for_trip(trip_request_id))
 
+    def list_customer_visible_for_trip(self, trip_request_id: UUID) -> list[OperatorOffer]:
+        """List only offers whose persisted lifecycle state is customer-published."""
+        if self.trips.get(trip_request_id) is None:
+            raise _not_found("Trip request")
+        return list(self.offers.list_customer_visible_for_trip(trip_request_id))
+
     # -- Helpers ------------------------------------------------------------
 
     @staticmethod

@@ -271,11 +271,12 @@ def list_trip_offers(
         owner_customer_id=owner,
         correlation_id=getattr(request.state, "correlation_id", None),
     )
-    offers = OperatorOfferService(session).list_for_trip(trip_request_id)
     if access.is_customer_view(principal, owner):
+        offers = OperatorOfferService(session).list_customer_visible_for_trip(trip_request_id)
         return [
             CustomerOfferResponse.model_validate(customer_offer_view(offer)) for offer in offers
         ]
+    offers = OperatorOfferService(session).list_for_trip(trip_request_id)
     return [InternalOfferResponse.model_validate(_to_response(offer)) for offer in offers]
 
 

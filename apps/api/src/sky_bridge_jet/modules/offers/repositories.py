@@ -27,6 +27,21 @@ class OperatorOfferRepository:
 
     def list_for_trip(self, trip_request_id: UUID) -> Sequence[OperatorOffer]:
         """Return all offers for a trip in a stable, deterministic comparison order."""
+        return self._list_for_trip(trip_request_id)
+
+    def list_customer_visible_for_trip(self, trip_request_id: UUID) -> Sequence[OperatorOffer]:
+        """Return only persisted lifecycle states published to the customer."""
+        return self._list_for_trip(
+            trip_request_id,
+            statuses=(OfferStatus.SUBMITTED, OfferStatus.SELECTED),
+        )
+
+    def _list_for_trip(
+        self,
+        trip_request_id: UUID,
+        *,
+        statuses: tuple[OfferStatus, ...] | None = None,
+    ) -> Sequence[OperatorOffer]:
         statement = (
             select(OperatorOffer)
             .where(OperatorOffer.trip_request_id == trip_request_id)
@@ -37,6 +52,8 @@ class OperatorOfferRepository:
                 OperatorOffer.id.asc(),
             )
         )
+        if statuses is not None:
+            statement = statement.where(OperatorOffer.status.in_(statuses))
         return self.session.scalars(statement).all()
 
     def get_selected_for_trip(self, trip_request_id: UUID) -> OperatorOffer | None:
