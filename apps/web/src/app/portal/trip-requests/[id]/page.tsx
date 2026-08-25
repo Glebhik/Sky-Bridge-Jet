@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import { useActiveOrganization } from "@/components/session/org-context";
 import { portalApi } from "@/lib/api/client";
@@ -14,6 +14,8 @@ import {
   tripHandle,
   tripStatusTone,
 } from "@/lib/portal/trip-requests";
+import { canCancelTripRequest } from "@/lib/portal/trip-management";
+import { TripCancelPanel } from "@/components/portal/TripCancelPanel";
 import {
   Alert,
   Badge,
@@ -63,6 +65,12 @@ export default function PortalTripRequestDetailPage() {
   const id = params.id;
   const { activeOrganizationId, hasCustomerContext } = useActiveOrganization();
 
+  // A cancel replaces the displayed request with the real CANCELLED response (never optimistic);
+  // a refresh (after a 409) clears that overlay and re-reads the request from the backend.
+  const [override, setOverride] = useState<CustomerTripRequest | null>(null);
+  const [justCancelled, setJustCancelled] = useState(false);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+
   const load = useCallback(
     (signal: AbortSignal) =>
       loadTripRequestDetail(id, activeOrganizationId ?? undefined, signal),
@@ -70,7 +78,7 @@ export default function PortalTripRequestDetailPage() {
   );
   const state = useApiResource<TripRequestDetail>(
     load,
-    `trip-request:${id}:${activeOrganizationId ?? "none"}`,
+    `trip-request:${id}:${activeOrganizationId ?? "none"}:${refreshNonce}`,
   );
 
   const backLink = (
@@ -129,7 +137,9 @@ export default function PortalTripRequestDetailPage() {
     );
   }
 
-  const { trip, airports } = state.data;
+  const { airports } = state.data;
+  // The overlay (a real CANCELLED response) wins over the loaded trip until a refresh clears it.
+  const trip = override ?? state.data.trip;
   const orderedLegs = [...trip.legs].sort((a, b) => a.sequence - b.sequence);
   const req = trip.requirements;
   const notes: readonly { label: string; value: string }[] = [
@@ -143,7 +153,7 @@ export default function PortalTripRequestDetailPage() {
     <>
       <PageHeading
         title={tripHandle(trip.id)}
-        description="A read-only view of your private-flight request."
+        description="Your private-flight request."
       />
 
       <Card>
@@ -161,6 +171,28 @@ export default function PortalTripRequestDetailPage() {
             <dd>{trip.passengers.length}</dd>
           </div>
         </dl>
+        {justCancelled ? (
+          <Alert tone="success" title="Request cancelled">
+            Your trip request has been cancelled.
+          </Alert>
+        ) : null}
+        {canCancelTripRequest(trip.status) ? (
+          <div className="detail-actions">
+            <TripCancelPanel
+              trip={trip}
+              organizationId={activeOrganizationId ?? undefined}
+              onCancelled={(updated) => {
+                setOverride(updated);
+                setJustCancelled(true);
+              }}
+              onRefreshNeeded={() => {
+                setOverride(null);
+                setJustCancelled(false);
+                setRefreshNonce((nonce) => nonce + 1);
+              }}
+            />
+          </div>
+        ) : null}
       </Card>
 
       <Card>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { useSession } from "@/components/session/session-context";
+import { TripRequestDashboard } from "@/components/portal/TripRequestDashboard";
 import { Badge, Card, PageHeading } from "@/components/ui/primitives";
 
 /**
@@ -23,6 +24,7 @@ export default function PortalDashboardPage() {
         title={greetingName ? `Welcome, ${greetingName}` : "Welcome"}
         description="Your Sky Bridge Jet customer portal."
       />
+      <TripRequestDashboard />
       <div className="card-grid">
         <Card>
           <h2 className="card__title">Trip requests</h2>

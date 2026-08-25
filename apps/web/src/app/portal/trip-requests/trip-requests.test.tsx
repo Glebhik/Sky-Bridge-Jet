@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,12 +10,14 @@ import type { CustomerTripRequest } from "@/lib/api/types";
 const listTripRequests = vi.fn();
 const getTripRequest = vi.fn();
 const getAirport = vi.fn();
+const cancelTripRequest = vi.fn();
 
 vi.mock("@/lib/api/client", () => ({
   portalApi: {
     listTripRequests: (...a: unknown[]) => listTripRequests(...a),
     getTripRequest: (...a: unknown[]) => getTripRequest(...a),
     getAirport: (...a: unknown[]) => getAirport(...a),
+    cancelTripRequest: (...a: unknown[]) => cancelTripRequest(...a),
   },
 }));
 
@@ -73,6 +75,7 @@ beforeEach(() => {
   listTripRequests.mockReset();
   getTripRequest.mockReset();
   getAirport.mockReset();
+  cancelTripRequest.mockReset();
 });
 
 afterEach(() => {
@@ -134,7 +137,7 @@ describe("PortalTripRequestsPage (list)", () => {
 });
 
 describe("PortalTripRequestDetailPage", () => {
-  it("renders real trip fields and resolves airport labels, with no mutation controls", async () => {
+  it("renders real trip fields and resolves airport labels, with only a Cancel action", async () => {
     getTripRequest.mockResolvedValueOnce(TRIP);
     getAirport.mockImplementation((id: string) =>
       Promise.resolve(
@@ -166,13 +169,15 @@ describe("PortalTripRequestDetailPage", () => {
     expect(screen.getByText(/London \(LHR\)/)).toBeTruthy();
     expect(screen.getByText("Ada Byron")).toBeTruthy();
     expect(screen.getByText("Window seat please")).toBeTruthy();
-    // Read-only: no create/submit/cancel/edit/book/pay controls.
+    // A SUBMITTED request is cancellable → the Cancel action is present…
+    expect(screen.getByRole("button", { name: "Cancel request" })).toBeTruthy();
+    // …but no other mutation controls (no submit/edit/book/pay/offer/select).
     for (const name of [
       /submit/i,
-      /cancel/i,
       /edit/i,
       /book/i,
       /pay/i,
+      /offer/i,
       /select/i,
     ]) {
       expect(screen.queryByRole("button", { name })).toBeNull();
@@ -182,6 +187,84 @@ describe("PortalTripRequestDetailPage", () => {
       "org-1",
       expect.anything(),
     );
+  });
+
+  it("hides the Cancel action for a non-cancellable status", async () => {
+    getTripRequest.mockResolvedValueOnce({ ...TRIP, status: "CANCELLED" });
+    getAirport.mockResolvedValue({
+      id: "a1",
+      icao_code: "EIDW",
+      iata_code: "DUB",
+      name: "Dublin",
+      city: "Dublin",
+      country_code: "IE",
+    });
+    render(<PortalTripRequestDetailPage />);
+    await screen.findByRole("heading", { name: "Request B32413C8" });
+    expect(screen.getByText("CANCELLED")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Cancel request" })).toBeNull();
+  });
+
+  it("cancels via confirmation and reflects CANCELLED, hiding the Cancel action", async () => {
+    getTripRequest.mockResolvedValueOnce(TRIP);
+    getAirport.mockResolvedValue({
+      id: "a1",
+      icao_code: "EIDW",
+      iata_code: "DUB",
+      name: "Dublin",
+      city: "Dublin",
+      country_code: "IE",
+    });
+    cancelTripRequest.mockResolvedValueOnce({
+      ...TRIP,
+      status: "CANCELLED",
+      version: 2,
+    });
+    render(<PortalTripRequestDetailPage />);
+    await screen.findByRole("heading", { name: "Request B32413C8" });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel request" }));
+    // Explicit confirmation, then confirm (the destructive button).
+    expect(screen.getByText("Cancel this trip request?")).toBeTruthy();
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /Cancel request/ }).pop()!,
+    );
+    // Uses the current id + version.
+    await waitFor(() =>
+      expect(cancelTripRequest).toHaveBeenCalledWith(TRIP.id, 1, "org-1"),
+    );
+    // The displayed request becomes CANCELLED and the Cancel action disappears.
+    expect(await screen.findByText("Request cancelled")).toBeTruthy();
+    expect(screen.getByText("CANCELLED")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Cancel request" })).toBeNull();
+  });
+
+  it("on a cancel conflict, refresh re-reads the request", async () => {
+    getTripRequest
+      .mockResolvedValueOnce(TRIP)
+      .mockResolvedValueOnce({ ...TRIP, status: "CANCELLED", version: 5 });
+    getAirport.mockResolvedValue({
+      id: "a1",
+      icao_code: "EIDW",
+      iata_code: "DUB",
+      name: "Dublin",
+      city: "Dublin",
+      country_code: "IE",
+    });
+    cancelTripRequest.mockRejectedValueOnce(
+      new ApiError(409, "conflict", "raw", "conflict"),
+    );
+    render(<PortalTripRequestDetailPage />);
+    await screen.findByRole("heading", { name: "Request B32413C8" });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel request" }));
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /Cancel request/ }).pop()!,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Refresh request" }),
+    );
+    // A second real GET happens and shows the current status.
+    await waitFor(() => expect(getTripRequest).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("CANCELLED")).toBeTruthy();
   });
 
   it("shows a not-found message on 404 without leaking internals", async () => {

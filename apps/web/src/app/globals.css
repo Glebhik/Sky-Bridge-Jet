@@ -333,6 +333,7 @@ h1 {
   font-size: clamp(1.75rem, 4vw, 2.25rem);
   letter-spacing: -0.02em;
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .page-heading__description {
@@ -1229,4 +1230,72 @@ a.resource-list__reference:hover {
   color: var(--ink-soft);
   font-size: 0.8125rem;
   margin: 0.25rem 0 0;
+}
+
+/* Phase 9.3.C — cancel action + dashboard trip-request summary. */
+.button--danger {
+  border-color: var(--danger, #b42318);
+  color: var(--danger, #b42318);
+}
+
+.detail-actions {
+  margin-top: 1rem;
+}
+
+.cancel-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
+.cancel-panel__prompt {
+  font-weight: 600;
+  margin: 0;
+}
+
+.cancel-panel__detail {
+  color: var(--ink-soft);
+  font-size: 0.9375rem;
+  margin: 0;
+}
+
+.cancel-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.stat-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  margin: 0.5rem 0 1.25rem;
+}
+
+.stat {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
+
+.stat__label {
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+}
+
+.stat__value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.1;
+  margin: 0.25rem 0 0;
+}
+
+.dashboard-subhead {
+  font-size: 1rem;
+  margin: 0.5rem 0 0.75rem;
 }

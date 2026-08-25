@@ -73,15 +73,17 @@ export interface ProxyPattern {
  * render its legs (`GET /airports/{id}`) both live behind an `{id}` path parameter that the
  * exact-string {@link PROXY_ALLOWLIST} cannot express. Each `{id}` must be a UUID.
  *
- * Phase 9.3.B adds exactly one parameterized *mutation* entry: submitting the customer's own
- * DRAFT (`POST /trip-requests/{id}/submit`). It is a three-segment pattern with a literal
- * trailing `submit`, so it can never widen the two-segment `{id}` GET into a passthrough and
- * never reaches `cancel`, `offers`, or `booking` — those remain unlisted (rejected 404). This
- * is NOT prefix matching, a wildcard, or a passthrough; the segment count must match exactly.
+ * Phase 9.3.B added the submit mutation; Phase 9.3.C adds exactly one more: cancelling the
+ * customer's own trip request (`POST /trip-requests/{id}/cancel`). Both are three-segment
+ * patterns with a literal trailing verb, so they can never widen the two-segment `{id}` GET
+ * into a passthrough and never reach `offers` or `booking` — those remain unlisted (rejected
+ * 404). This is NOT prefix matching, a wildcard, or a passthrough; the segment count must
+ * match exactly, and each verb is bound to exactly one method.
  */
 export const PROXY_PATTERN_ALLOWLIST: readonly ProxyPattern[] = [
   { segments: ["trip-requests", ":uuid"], methods: ["GET"] },
   { segments: ["trip-requests", ":uuid", "submit"], methods: ["POST"] },
+  { segments: ["trip-requests", ":uuid", "cancel"], methods: ["POST"] },
   { segments: ["airports", ":uuid"], methods: ["GET"] },
 ];
 
