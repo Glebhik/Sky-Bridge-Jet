@@ -75,10 +75,13 @@ export default function PortalTripRequestsPage() {
           description="When you request a private flight, it will appear here."
         />
       ) : (
-        <ul className="resource-list">
+        <ul className="resource-list trip-list">
           {state.data.map((trip) => (
             <li key={trip.id}>
-              <Card as="article">
+              <Card
+                as="article"
+                className={`trip-card trip-card--${tripStatusTone(trip.status)}`}
+              >
                 <div className="resource-list__row">
                   <Link
                     className="resource-list__reference"

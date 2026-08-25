@@ -25,7 +25,7 @@ export default function PortalDashboardPage() {
         description="Your Sky Bridge Jet customer portal."
       />
       <TripRequestDashboard />
-      <div className="card-grid">
+      <div className="card-grid portal-shortcuts">
         <Card>
           <h2 className="card__title">Trip requests</h2>
           <p>View your private-flight requests and their status.</p>

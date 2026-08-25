@@ -57,7 +57,7 @@ export default function PortalAccountPage() {
         title="Account"
         description="Your sign-in and customer account details."
       />
-      <Card>
+      <Card className="account-card">
         <h2 className="card__title">Sign-in</h2>
         {user ? (
           <dl className="detail-list">
@@ -77,7 +77,7 @@ export default function PortalAccountPage() {
         ) : null}
       </Card>
 
-      <Card>
+      <Card className="account-card">
         <h2 className="card__title">Customer account</h2>
         {hasCustomerContext ? (
           <p>

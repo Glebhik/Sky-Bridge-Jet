@@ -25,13 +25,22 @@ export function PortalShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="portal">
+      <div className="portal__atmosphere" aria-hidden="true">
+        <div className="portal__grid" />
+        <div className="portal__glow" />
+        <div className="portal__horizon" />
+      </div>
       <a className="skip-link" href="#portal-main">
         Skip to main content
       </a>
       <header className="portal-header">
         <div className="portal-header__bar">
-          <Link href="/portal" className="brand portal-header__brand">
-            Sky Bridge Jet
+          <Link
+            href="/portal"
+            className="portal-header__brand"
+            aria-label="Sky Bridge Jet — home"
+          >
+            <span className="portal-header__wordmark">Sky Bridge Jet</span>
           </Link>
           <button
             type="button"

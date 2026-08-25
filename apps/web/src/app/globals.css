@@ -1299,3 +1299,778 @@ a.resource-list__reference:hover {
   font-size: 1rem;
   margin: 0.5rem 0 0.75rem;
 }
+
+/* ---------- Production Customer Portal (Midnight Aviation — visual polish V1) ---------- */
+/* Tightly scoped under `.portal` so `/demo`, `/`, and `.sbj-auth` are never restyled.
+   Tokens mirror the production auth language; champagne is reserved for action, focus,
+   active navigation, and small status details. */
+.portal {
+  --p-midnight: #06131f;
+  --p-midnight-deep: #030b12;
+  --p-navy: #0b2030;
+  --p-panel: #10293b;
+  --p-champagne: #c5a365;
+  --p-champagne-light: #e2c98f;
+  --p-ivory: #f5f0e8;
+  --p-text: #eef1f2;
+  --p-text-muted: #a9b2ba;
+  --p-line: rgba(197, 163, 101, 0.28);
+  --p-line-soft: rgba(245, 240, 232, 0.1);
+  --p-caution: #e4cfc4;
+  --p-positive: #c5d7c8;
+  --p-display:
+    "Palatino Linotype", Palatino, "Iowan Old Style", "Times New Roman", serif;
+  --p-ui: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --p-focus: 0 0 0 2px var(--p-midnight), 0 0 0 4px var(--p-champagne-light);
+  background: linear-gradient(
+    180deg,
+    var(--p-navy) 0%,
+    var(--p-midnight) 46%,
+    var(--p-midnight-deep) 100%
+  );
+  color: var(--p-text);
+  color-scheme: dark;
+  font-family: var(--p-ui);
+  isolation: isolate;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: clip;
+  position: relative;
+}
+
+.portal__atmosphere {
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  z-index: 0;
+}
+
+.portal__grid {
+  background-image:
+    linear-gradient(rgba(197, 163, 101, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(197, 163, 101, 0.045) 1px, transparent 1px);
+  background-size: 56px 56px;
+  height: 100%;
+  mask-image: radial-gradient(
+    ellipse 90% 70% at 50% 0%,
+    #000 8%,
+    transparent 78%
+  );
+  width: 100%;
+}
+
+.portal__glow {
+  background: radial-gradient(
+    900px 380px at 78% -8%,
+    rgba(197, 163, 101, 0.07),
+    transparent 58%
+  );
+  inset: 0;
+  position: absolute;
+}
+
+.portal__horizon {
+  background: linear-gradient(
+    90deg,
+    transparent 6%,
+    rgba(197, 163, 101, 0.22) 50%,
+    transparent 94%
+  );
+  height: 1px;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 7.25rem;
+}
+
+.portal .skip-link {
+  background: var(--p-champagne);
+  color: var(--p-midnight-deep);
+}
+
+.portal .portal-main {
+  position: relative;
+  z-index: 1;
+}
+
+.portal .portal-header {
+  background: rgba(3, 11, 18, 0.86);
+  border-bottom: 1px solid var(--p-line);
+  box-shadow: inset 0 1px 0 rgba(226, 201, 143, 0.16);
+  position: sticky;
+  top: 0;
+  z-index: 6;
+}
+
+.portal .portal-header__bar {
+  max-width: 72rem;
+  min-height: 3.75rem;
+  padding: 0.35rem max(1.25rem, env(safe-area-inset-right, 0px)) 0.35rem
+    max(1.25rem, env(safe-area-inset-left, 0px));
+}
+
+.portal .portal-header__brand {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  min-width: 0;
+}
+
+.portal .portal-header__wordmark {
+  color: var(--p-ivory);
+  font-family: var(--p-display);
+  font-size: 0.84rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.portal .portal-header__menu-toggle {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--p-line);
+  border-radius: 0.45rem;
+  color: var(--p-ivory);
+  justify-content: center;
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
+
+.portal .portal-header__account {
+  min-width: 0;
+}
+
+.portal .portal-nav {
+  border-top: 1px solid var(--p-line-soft);
+}
+
+.portal .portal-nav__list {
+  max-width: 72rem;
+  padding: 0 max(0.75rem, env(safe-area-inset-left, 0px));
+}
+
+.portal .portal-nav__link {
+  border-bottom-color: transparent;
+  color: var(--p-text-muted);
+  font-size: 0.92rem;
+  letter-spacing: 0.03em;
+  min-height: 2.85rem;
+}
+
+.portal .portal-nav__link:hover {
+  color: var(--p-ivory);
+}
+
+.portal .portal-nav__link--active {
+  border-bottom-color: var(--p-champagne);
+  color: var(--p-ivory);
+}
+
+.portal .org-switcher__label {
+  color: var(--p-text-muted);
+}
+
+.portal .org-switcher__value {
+  color: var(--p-ivory);
+  font-size: 0.88rem;
+}
+
+.portal .org-switcher__select {
+  background: rgba(3, 11, 18, 0.72);
+  border: 1px solid var(--p-line-soft);
+  border-radius: 0.4rem;
+  color: var(--p-ivory);
+  min-height: 2.5rem;
+}
+
+.portal .user-menu__identity {
+  color: var(--p-ivory);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.portal .portal-main {
+  min-width: 0;
+}
+
+.portal .container {
+  display: grid;
+  gap: 1.25rem;
+  max-width: 72rem;
+  padding: 1.75rem max(1.25rem, env(safe-area-inset-right, 0px))
+    calc(3rem + env(safe-area-inset-bottom, 0px))
+    max(1.25rem, env(safe-area-inset-left, 0px));
+  width: 100%;
+}
+
+.portal .page-heading {
+  margin-bottom: 0;
+}
+
+.portal .page-heading h1 {
+  color: var(--p-ivory);
+  font-family: var(--p-display);
+  font-size: clamp(1.55rem, 3.4vw, 2.15rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.portal .page-heading__description {
+  color: var(--p-text-muted);
+  font-size: 0.98rem;
+  margin-top: 0.4rem;
+}
+
+.portal .card {
+  background: linear-gradient(
+    180deg,
+    rgba(22, 54, 76, 0.92) 0%,
+    rgba(16, 41, 59, 0.96) 100%
+  );
+  border: 1px solid var(--p-line-soft);
+  border-radius: 1rem;
+  box-shadow:
+    inset 0 1px 0 rgba(226, 201, 143, 0.14),
+    0 18px 40px rgba(3, 11, 18, 0.28);
+  padding: 1.25rem 1.3rem 1.3rem;
+}
+
+.portal .card__title {
+  color: var(--p-ivory);
+  font-family: var(--p-display);
+  font-size: 1.2rem;
+  font-weight: 500;
+  gap: 0.55rem;
+  margin: 0 0 0.65rem;
+}
+
+.portal .portal-shortcuts .card p,
+.portal .account-card p {
+  color: var(--p-text-muted);
+  margin: 0 0 0.75rem;
+}
+
+.portal .card__link {
+  color: var(--p-champagne-light);
+  display: inline-flex;
+  font-weight: 600;
+  min-height: 2.75rem;
+  align-items: center;
+  text-decoration: underline;
+  text-underline-offset: 0.22em;
+}
+
+.portal .card-grid {
+  gap: 1rem;
+}
+
+.portal .button,
+.portal a.button {
+  border-radius: 0.45rem;
+  letter-spacing: 0.02em;
+  min-height: 2.75rem;
+}
+
+.portal .button--primary,
+.portal a.button--primary {
+  background: var(--p-champagne);
+  border: 1px solid var(--p-champagne);
+  color: var(--p-midnight-deep);
+  font-weight: 700;
+}
+
+.portal .button--primary:hover:not(:disabled),
+.portal a.button--primary:hover {
+  background: var(--p-champagne-light);
+  border-color: var(--p-champagne-light);
+}
+
+.portal .button--secondary {
+  background: transparent;
+  border: 1px solid var(--p-line);
+  color: var(--p-ivory);
+}
+
+.portal .button--secondary:hover:not(:disabled) {
+  border-color: var(--p-champagne-light);
+}
+
+.portal .button--ghost {
+  background: transparent;
+  color: var(--p-champagne-light);
+}
+
+.portal .button--ghost:hover:not(:disabled) {
+  background: rgba(197, 163, 101, 0.08);
+}
+
+.portal .button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.portal .button--danger {
+  background: transparent;
+  border-color: rgba(228, 207, 196, 0.55);
+  color: var(--p-caution);
+}
+
+.portal .button--danger:hover:not(:disabled) {
+  border-color: var(--p-caution);
+  color: var(--p-ivory);
+}
+
+.portal .badge {
+  border: 1px solid var(--p-line-soft);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+}
+
+.portal .badge--neutral {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--p-text-muted);
+}
+
+.portal .badge--info {
+  background: rgba(197, 163, 101, 0.12);
+  color: var(--p-champagne-light);
+}
+
+.portal .badge--success {
+  background: rgba(197, 215, 200, 0.14);
+  color: var(--p-positive);
+}
+
+.portal .badge--warning {
+  background: rgba(226, 201, 143, 0.12);
+  color: var(--p-champagne-light);
+}
+
+.portal .badge--danger {
+  background: rgba(228, 207, 196, 0.1);
+  color: var(--p-caution);
+}
+
+.portal .alert {
+  border-radius: 0.55rem;
+  padding: 0.95rem 1.05rem;
+}
+
+.portal .alert__title {
+  color: var(--p-ivory);
+}
+
+.portal .alert__body {
+  color: var(--p-text-muted);
+}
+
+.portal .alert--info,
+.portal .alert--success {
+  background: rgba(197, 163, 101, 0.08);
+  border: 1px solid var(--p-line);
+  border-left: 2px solid var(--p-champagne);
+}
+
+.portal .alert--warning {
+  background: rgba(226, 201, 143, 0.08);
+  border: 1px solid var(--p-line);
+  border-left: 2px solid var(--p-champagne-light);
+}
+
+.portal .alert--error {
+  background: rgba(228, 207, 196, 0.08);
+  border: 1px solid rgba(228, 207, 196, 0.35);
+  border-left: 2px solid var(--p-caution);
+  color: var(--p-ivory);
+}
+
+.portal .field {
+  gap: 0.4rem;
+  margin-top: 0.85rem;
+}
+
+.portal .field__label {
+  color: var(--p-ivory);
+  font-size: 0.8125rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.portal .field__input {
+  appearance: none;
+  background: rgba(3, 11, 18, 0.72);
+  border: 1px solid var(--p-line-soft);
+  border-radius: 0.45rem;
+  color: var(--p-text);
+  font-family: inherit;
+  font-size: 1rem;
+  min-height: 2.75rem;
+  padding: 0.7rem 0.85rem;
+  width: 100%;
+}
+
+.portal .field__input:hover {
+  border-color: var(--p-line);
+}
+
+.portal .field__input:focus {
+  border-color: var(--p-champagne);
+}
+
+.portal .field__error {
+  color: var(--p-caution);
+  font-size: 0.875rem;
+  margin: 0.35rem 0 0;
+}
+
+.portal .field__checkbox {
+  color: var(--p-text);
+  min-height: 2.75rem;
+}
+
+.portal .field__checkbox input {
+  accent-color: var(--p-champagne);
+  height: 1.1rem;
+  width: 1.1rem;
+}
+
+.portal .state {
+  color: var(--p-text-muted);
+}
+
+.portal .state__title {
+  color: var(--p-ivory);
+  font-family: var(--p-display);
+  font-size: 1.2rem;
+  font-weight: 500;
+}
+
+.portal .state__spinner {
+  animation: portal-spin 1.15s linear infinite;
+  border: 1.5px solid rgba(197, 163, 101, 0.22);
+  border-top-color: var(--p-champagne-light);
+}
+
+@keyframes portal-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.portal .detail-list dt {
+  color: var(--p-text-muted);
+}
+
+.portal .detail-list dd {
+  color: var(--p-ivory);
+}
+
+.portal a.resource-list__reference {
+  color: var(--p-ivory);
+}
+
+.portal a.resource-list__reference:hover {
+  color: var(--p-champagne-light);
+  text-decoration: none;
+}
+
+.portal .resource-list__meta {
+  color: var(--p-text-muted);
+}
+
+.portal .resource-list__actions {
+  margin: 0;
+}
+
+.portal .sbj-link {
+  color: var(--p-champagne-light);
+  display: inline-flex;
+  font-weight: 600;
+  min-height: 2.75rem;
+  align-items: center;
+  text-decoration: underline;
+  text-underline-offset: 0.22em;
+}
+
+.portal .stat-grid {
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0.25rem 0 1.15rem;
+}
+
+.portal .stat {
+  background: rgba(3, 11, 18, 0.35);
+  border: 1px solid var(--p-line-soft);
+  border-radius: 0.7rem;
+  padding: 0.85rem 0.95rem;
+}
+
+.portal .stat__label {
+  color: var(--p-text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.portal .stat__value {
+  color: var(--p-ivory);
+  font-family: var(--p-display);
+  font-size: 1.7rem;
+  font-weight: 500;
+}
+
+.portal .dashboard-subhead {
+  color: var(--p-ivory);
+  font-family: var(--p-display);
+  font-size: 1.05rem;
+  font-weight: 500;
+  margin: 0.15rem 0 0.7rem;
+}
+
+.portal .dashboard-summary__head {
+  align-items: center;
+  margin-bottom: 0.85rem;
+}
+
+.portal .dashboard-summary__head .card__title {
+  margin: 0;
+}
+
+.portal .resource-list--quiet {
+  gap: 0;
+}
+
+.portal .recent-request {
+  border-top: 1px solid var(--p-line-soft);
+  padding: 0.8rem 0;
+}
+
+.portal .recent-request:last-child {
+  padding-bottom: 0;
+}
+
+.portal .trip-card {
+  border-left: 2px solid var(--p-line);
+}
+
+.portal .trip-card--info {
+  border-left-color: var(--p-champagne);
+}
+
+.portal .trip-card--success {
+  border-left-color: var(--p-positive);
+}
+
+.portal .trip-card--warning {
+  border-left-color: var(--p-champagne-light);
+}
+
+.portal .trip-card--danger {
+  border-left-color: var(--p-caution);
+}
+
+.portal .itinerary {
+  gap: 1rem;
+}
+
+.portal .itinerary__route {
+  align-items: baseline;
+  color: var(--p-ivory);
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--p-display);
+  font-size: 1.2rem;
+  font-weight: 500;
+  gap: 0.45rem 0.7rem;
+}
+
+.portal .itinerary__arrow {
+  color: var(--p-champagne);
+  font-family: var(--p-ui);
+  font-size: 0.95rem;
+}
+
+.portal .itinerary__meta {
+  color: var(--p-text-muted);
+}
+
+.portal .status-block--cancelled {
+  border-color: rgba(228, 207, 196, 0.32);
+}
+
+.portal .passenger-list {
+  color: var(--p-ivory);
+}
+
+.portal .form-section .card__title {
+  margin-bottom: 0.35rem;
+}
+
+.portal .journey-airports,
+.portal .passenger-name-row {
+  display: grid;
+  gap: 0 1rem;
+}
+
+.portal .passenger-fieldset {
+  background: rgba(3, 11, 18, 0.28);
+  border: 1px solid var(--p-line-soft);
+  border-radius: 0.75rem;
+  padding: 0.85rem 1rem 1rem;
+}
+
+.portal .passenger-fieldset legend {
+  color: var(--p-champagne-light);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.portal .airport-picker__list {
+  background: var(--p-panel);
+  border: 1px solid var(--p-line);
+  border-radius: 0.55rem;
+  box-shadow: 0 16px 40px rgba(3, 11, 18, 0.55);
+  max-height: min(15rem, 50vh);
+}
+
+.portal .airport-picker__option {
+  color: var(--p-text);
+  min-height: 2.5rem;
+  padding: 0.55rem 0.7rem;
+}
+
+.portal .airport-picker__option--active,
+.portal .airport-picker__option:hover {
+  background: rgba(197, 163, 101, 0.14);
+  color: var(--p-ivory);
+}
+
+.portal .airport-picker__empty,
+.portal .airport-picker__selected {
+  color: var(--p-text-muted);
+}
+
+.portal .form-section--review .button--primary {
+  margin-top: 1rem;
+  width: 100%;
+}
+
+.portal .cancel-panel {
+  background: rgba(3, 11, 18, 0.35);
+  border: 1px solid rgba(228, 207, 196, 0.32);
+  border-left: 2px solid var(--p-caution);
+  border-radius: 0.75rem;
+  margin-top: 1rem;
+  padding: 1rem 1.05rem;
+}
+
+.portal .cancel-panel__prompt {
+  color: var(--p-ivory);
+  font-family: var(--p-display);
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+
+.portal .cancel-panel__detail {
+  color: var(--p-text-muted);
+}
+
+.portal .cancel-panel__actions {
+  gap: 0.65rem;
+}
+
+.portal .cancel-panel__actions .button {
+  min-height: 2.75rem;
+}
+
+.portal :focus-visible {
+  outline: none;
+  box-shadow: var(--p-focus);
+  border-radius: 0.4rem;
+}
+
+@media (min-width: 48rem) {
+  .portal .stat-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .portal .journey-airports,
+  .portal .passenger-name-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .portal .form-section--review .button--primary {
+    width: auto;
+    min-width: 16rem;
+  }
+}
+
+@media (max-width: 48rem) {
+  .portal .portal-nav__link {
+    border-bottom: none;
+    border-left: 2px solid transparent;
+  }
+
+  .portal .portal-nav__link--active {
+    border-left-color: var(--p-champagne);
+  }
+
+  .portal .portal-header__bar {
+    flex-wrap: wrap;
+  }
+
+  .portal .dashboard-summary__head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .portal .dashboard-summary__head .button,
+  .portal .resource-list__actions .button,
+  .portal .resource-list__actions a.button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 30rem) {
+  .portal .portal-header__wordmark {
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+  }
+
+  .portal .container {
+    padding-top: 1.25rem;
+  }
+
+  .portal .card {
+    padding: 1.05rem 1rem 1.1rem;
+  }
+
+  .portal .stat__value {
+    font-size: 1.45rem;
+  }
+
+  .portal .itinerary__route {
+    font-size: 1.05rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal *,
+  .portal *::before,
+  .portal *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .portal .state__spinner {
+    border-color: var(--p-champagne);
+    opacity: 0.85;
+  }
+}

@@ -116,8 +116,8 @@ export function TripRequestDashboard() {
   ];
 
   return (
-    <Card>
-      <div className="resource-list__row">
+    <Card className="dashboard-summary">
+      <div className="resource-list__row dashboard-summary__head">
         <h2 className="card__title">Trip requests</h2>
         {newRequestCta}
       </div>
@@ -131,9 +131,9 @@ export function TripRequestDashboard() {
       </dl>
 
       <h3 className="dashboard-subhead">Recent requests</h3>
-      <ul className="resource-list">
+      <ul className="resource-list resource-list--quiet">
         {recent.map((trip) => (
-          <li key={trip.id}>
+          <li key={trip.id} className="recent-request">
             <div className="resource-list__row">
               <Link
                 className="resource-list__reference"

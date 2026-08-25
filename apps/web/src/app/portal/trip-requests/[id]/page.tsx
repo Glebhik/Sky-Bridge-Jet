@@ -156,7 +156,13 @@ export default function PortalTripRequestDetailPage() {
         description="Your private-flight request."
       />
 
-      <Card>
+      <Card
+        className={
+          trip.status === "CANCELLED"
+            ? "status-block status-block--cancelled"
+            : "status-block"
+        }
+      >
         <div className="resource-list__row">
           <h2 className="card__title">Status</h2>
           <Badge tone={tripStatusTone(trip.status)}>{trip.status}</Badge>
@@ -195,21 +201,27 @@ export default function PortalTripRequestDetailPage() {
         ) : null}
       </Card>
 
-      <Card>
+      <Card className="itinerary-card">
         <h2 className="card__title">Itinerary</h2>
         <ol className="itinerary">
           {orderedLegs.map((leg) => (
             <li key={leg.id} className="itinerary__leg">
               <span className="itinerary__route">
-                {airportLabel(
-                  airports[leg.origin_airport_id],
-                  leg.origin_timezone,
-                )}{" "}
-                →{" "}
-                {airportLabel(
-                  airports[leg.destination_airport_id],
-                  leg.destination_timezone,
-                )}
+                <span className="itinerary__point">
+                  {airportLabel(
+                    airports[leg.origin_airport_id],
+                    leg.origin_timezone,
+                  )}
+                </span>
+                <span className="itinerary__arrow" aria-hidden="true">
+                  →
+                </span>
+                <span className="itinerary__point">
+                  {airportLabel(
+                    airports[leg.destination_airport_id],
+                    leg.destination_timezone,
+                  )}
+                </span>
               </span>
               <span className="itinerary__meta">
                 Departs {formatDateTime(leg.departure_at)} ·{" "}
