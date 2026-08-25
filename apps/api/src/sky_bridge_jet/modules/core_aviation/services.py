@@ -85,12 +85,19 @@ class CustomerService:
         return customer
 
     def create_passenger(self, data: PassengerCreate, *, on_commit: OnCommit = None) -> Passenger:
+        # The router resolves the authoritative owner and rewrites `customer_id` before
+        # calling this service (Phase 9.3.B0). `customer_id` is optional at the API edge,
+        # so a `None` here means the caller skipped that resolution — treat it as a missing
+        # customer rather than persisting an unowned record.
+        customer_id = data.customer_id
+        if customer_id is None:
+            raise _not_found("Customer")
         with self.session.begin():
-            if self.customers.get(data.customer_id) is None:
+            if self.customers.get(customer_id) is None:
                 raise _not_found("Customer")
             passenger = self.passengers.add(
                 Passenger(
-                    customer_id=data.customer_id,
+                    customer_id=customer_id,
                     first_name=data.first_name.strip(),
                     last_name=data.last_name.strip(),
                     date_of_birth=data.date_of_birth,
@@ -190,13 +197,18 @@ class TripRequestService:
         self.trips = TripRequestRepository(session)
 
     def create(self, data: TripRequestCreate, *, on_commit: OnCommit = None) -> TripRequest:
+        # See create_passenger: the router resolves the authoritative owner and rewrites
+        # `customer_id` before this call (Phase 9.3.B0); a `None` here is a missing customer.
+        customer_id = data.customer_id
+        if customer_id is None:
+            raise _not_found("Customer")
         with self.session.begin():
-            if self.customers.get(data.customer_id) is None:
+            if self.customers.get(customer_id) is None:
                 raise _not_found("Customer")
 
             trip = self.trips.add(
                 TripRequest(
-                    customer_id=data.customer_id,
+                    customer_id=customer_id,
                     baggage_notes=data.requirements.baggage_notes,
                     catering_notes=data.requirements.catering_notes,
                     ground_transport_requested=data.requirements.ground_transport_requested,

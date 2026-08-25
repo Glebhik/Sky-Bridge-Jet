@@ -82,7 +82,12 @@ class CustomerResponse(ApiModel):
 
 
 class PassengerCreate(ApiModel):
-    customer_id: UUID
+    # Optional client-supplied confirmation only. The authoritative customer is derived
+    # server-side from the authenticated principal + validated active organization in
+    # `resolve_write_customer`; omitting this lets a first-time customer create without
+    # discovering an internal customer UUID, while a supplied *mismatching* value is still
+    # rejected/concealed exactly as before (tenant isolation unchanged).
+    customer_id: UUID | None = None
     first_name: Annotated[str, Field(min_length=1, max_length=100)]
     last_name: Annotated[str, Field(min_length=1, max_length=100)]
     date_of_birth: date | None = None
@@ -270,7 +275,10 @@ class TripLegResponse(ApiModel):
 
 
 class TripRequestCreate(ApiModel):
-    customer_id: UUID
+    # Optional client-supplied confirmation only — see PassengerCreate.customer_id. The
+    # authoritative customer is derived server-side from the principal + validated active
+    # organization; omission derives it, a mismatching value is still rejected/concealed.
+    customer_id: UUID | None = None
     legs: Annotated[list[TripLegCreate], Field(min_length=1, max_length=20)]
     passenger_ids: list[UUID] = Field(default_factory=list)
     requirements: TripRequirementsCreate = Field(default_factory=TripRequirementsCreate)
