@@ -257,3 +257,69 @@ def test_full_responses_never_reach_a_customer_principal(admin: TestClient, airp
     assert response.status_code == 200
     assert "platform_fee_minor" not in response.text
     assert "operator_amount_minor" not in response.text
+
+
+# --------------------------------------------------------------------------- #
+# Phase 9.3.B0 — customer_id is optional confirmation; the server derives it
+# --------------------------------------------------------------------------- #
+def _passenger_body_no_customer() -> dict:
+    return dict(_PASSENGER)
+
+
+def _trip_body_no_customer(airports: list) -> dict:
+    body = _trip_body("", airports)
+    body.pop("customer_id")
+    return body
+
+
+@requires_db
+def test_passenger_create_derives_customer_when_body_omits_it(admin: TestClient) -> None:
+    """A customer may create a passenger without supplying a customer_id; the server
+    derives the authoritative customer from the validated active organization."""
+    customer_id = iam_support.create_customer(admin)
+    client, _ = iam_support.customer_owner_client(admin, customer_id)
+
+    created = client.post("/api/v1/passengers", json=_passenger_body_no_customer())
+    assert created.status_code == 201, created.text
+    # Ownership is the authoritative customer, never client-chosen.
+    assert created.json()["customer_id"] == str(customer_id)
+
+
+@requires_db
+def test_trip_request_create_and_submit_without_body_customer_id(
+    admin: TestClient, airports: list
+) -> None:
+    """A first-time customer can create a DRAFT trip and submit it to SUBMITTED without
+    ever discovering an internal customer UUID."""
+    customer_id = iam_support.create_customer(admin)
+    client, _ = iam_support.customer_owner_client(admin, customer_id)
+
+    created = client.post("/api/v1/trip-requests", json=_trip_body_no_customer(airports))
+    assert created.status_code == 201, created.text
+    trip = created.json()
+    assert trip["customer_id"] == str(customer_id)
+    assert trip["status"] == "DRAFT"
+
+    submitted = client.post(
+        f"/api/v1/trip-requests/{trip['id']}/submit",
+        json={"expected_version": trip["version"]},
+    )
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["status"] == "SUBMITTED"
+
+
+@requires_db
+def test_omitted_customer_id_still_requires_a_valid_active_org(admin: TestClient) -> None:
+    """Omitting customer_id must not bypass active-organization validation: a forged,
+    non-member X-Organization-Id is still rejected."""
+    import uuid
+
+    customer_id = iam_support.create_customer(admin)
+    client, _ = iam_support.customer_owner_client(admin, customer_id)
+
+    forged = client.post(
+        "/api/v1/passengers",
+        json=_passenger_body_no_customer(),
+        headers={"X-Organization-Id": str(uuid.uuid4())},
+    )
+    assert forged.status_code == 403, forged.text
