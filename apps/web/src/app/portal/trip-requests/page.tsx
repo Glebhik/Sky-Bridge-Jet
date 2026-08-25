@@ -46,6 +46,16 @@ export default function PortalTripRequestsPage() {
         title="Trip requests"
         description="Private-flight requests linked to your customer account."
       />
+      {hasCustomerContext ? (
+        <p className="resource-list__actions">
+          <Link
+            className="button button--primary"
+            href="/portal/trip-requests/new"
+          >
+            New trip request
+          </Link>
+        </p>
+      ) : null}
       {!hasCustomerContext ? (
         <Alert tone="warning" title="No active customer account">
           Trip requests appear once your sign-in is linked to a customer

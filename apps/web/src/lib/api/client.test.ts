@@ -207,3 +207,101 @@ describe("portalApi — Phase 9.3.A trip-request reads", () => {
     expect(sessionStorage.length).toBe(0);
   });
 });
+
+describe("portalApi — Phase 9.3.B customer write journey", () => {
+  const TRIP_ID = "b32413c8-88e9-4c05-89e5-78afb14f5eb4";
+
+  beforeEach(() => {
+    document.cookie = "sbj_csrf=csrf-value";
+  });
+
+  it("listAirports GETs the exact collection path (no query, no org header)", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse([]));
+    await portalApi.listAirports();
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toBe("/api/proxy/airports");
+    expect(init?.method ?? "GET").toBe("GET");
+    expect((init?.headers as Headers).get("x-organization-id")).toBeNull();
+  });
+
+  it("createPassenger POSTs the exact path with CSRF + org header and NO customer_id", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ id: "p1" }, 201));
+    await portalApi.createPassenger(
+      { first_name: "Ada", last_name: "Byron" },
+      "org-42",
+    );
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toBe("/api/proxy/passengers");
+    expect(init?.method).toBe("POST");
+    expect(init?.credentials).toBe("same-origin");
+    const headers = init?.headers as Headers;
+    expect(headers.get("x-csrf-token")).toBe("csrf-value");
+    expect(headers.get("x-organization-id")).toBe("org-42");
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body).toEqual({ first_name: "Ada", last_name: "Byron" });
+    expect("customer_id" in body).toBe(false);
+  });
+
+  it("createTripRequest POSTs the exact path with the org header and NO customer_id", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse({ id: TRIP_ID, status: "DRAFT" }, 201),
+      );
+    await portalApi.createTripRequest(
+      {
+        legs: [
+          {
+            origin_airport_id: "a1",
+            destination_airport_id: "a2",
+            departure_at: "2027-01-01T10:00:00.000Z",
+            passenger_count: 1,
+          },
+        ],
+        passenger_ids: ["p1"],
+        requirements: { ground_transport_requested: false },
+      },
+      "org-42",
+    );
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toBe("/api/proxy/trip-requests");
+    expect(init?.method).toBe("POST");
+    expect((init?.headers as Headers).get("x-organization-id")).toBe("org-42");
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect("customer_id" in body).toBe(false);
+    expect(JSON.stringify(body)).not.toContain("customer_id");
+    expect(body.passenger_ids).toEqual(["p1"]);
+  });
+
+  it("submitTripRequest POSTs the exact id/submit path with the returned version", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse({ id: TRIP_ID, status: "SUBMITTED", version: 2 }),
+      );
+    await portalApi.submitTripRequest(TRIP_ID, 1, "org-42");
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toBe(`/api/proxy/trip-requests/${TRIP_ID}/submit`);
+    expect(init?.method).toBe("POST");
+    expect((init?.headers as Headers).get("x-organization-id")).toBe("org-42");
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body).toEqual({ expected_version: 1 });
+    expect("customer_id" in body).toBe(false);
+  });
+
+  it("never writes credentials or ids to browser storage on writes", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(jsonResponse({ id: "p1" }, 201)),
+    );
+    await portalApi.createPassenger(
+      { first_name: "Ada", last_name: "Byron" },
+      "org-42",
+    );
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
+  });
+});

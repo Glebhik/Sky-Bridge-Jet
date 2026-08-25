@@ -150,6 +150,67 @@ export interface CustomerPayment {
   readonly created_at: string;
 }
 
+/**
+ * Phase 9.3.B — customer *write* request contracts.
+ *
+ * These mirror the backend `PassengerCreate` / `TripRequestCreate` / `VersionedTripCommand`
+ * schemas, with one deliberate omission: NONE of them carry `customer_id`. The browser neither
+ * knows nor sends the internal customer UUID; the API derives the authoritative customer from
+ * the authenticated principal plus the validated active organization (Phase 9.3.B0). A leaked
+ * `customer_id` in any of these types would be a security regression, so it is absent by
+ * construction and asserted by tests.
+ */
+
+/** Create-a-passenger request body. No `customer_id` — the server derives ownership. */
+export interface PassengerCreateRequest {
+  readonly first_name: string;
+  readonly last_name: string;
+  readonly date_of_birth?: string | null;
+  readonly nationality?: string | null;
+  readonly contact_email?: string | null;
+  readonly contact_phone?: string | null;
+}
+
+/**
+ * The customer-safe projection of a created passenger the browser actually consumes. The
+ * backend `PassengerResponse` also echoes `customer_id`, but the portal never reads it: only
+ * the returned `id` (used as a `passenger_id` in the trip payload) and the name are declared.
+ */
+export interface PassengerRecord {
+  readonly id: string;
+  readonly first_name: string;
+  readonly last_name: string;
+}
+
+/** One leg of a create request (mirrors `TripLegCreate`). Airports are referenced by UUID. */
+export interface TripLegCreateRequest {
+  readonly origin_airport_id: string;
+  readonly destination_airport_id: string;
+  readonly departure_at: string;
+  readonly passenger_count: number;
+}
+
+/** Customer-supplied requirements on create (mirrors `TripRequirementsCreate`; no pet UI). */
+export interface TripRequirementsCreateRequest {
+  readonly baggage_notes?: string | null;
+  readonly catering_notes?: string | null;
+  readonly ground_transport_requested: boolean;
+  readonly special_assistance_notes?: string | null;
+  readonly customer_notes?: string | null;
+}
+
+/** Create-a-DRAFT trip request body. No `customer_id` — the server derives ownership. */
+export interface TripRequestCreateRequest {
+  readonly legs: readonly TripLegCreateRequest[];
+  readonly passenger_ids: readonly string[];
+  readonly requirements: TripRequirementsCreateRequest;
+}
+
+/** The optimistic-concurrency command body for submit (mirrors `VersionedTripCommand`). */
+export interface VersionedTripCommandRequest {
+  readonly expected_version: number;
+}
+
 /** The shared safe error envelope every API error uses: `{ error: { code, message } }`. */
 export interface ApiErrorBody {
   readonly error: {
