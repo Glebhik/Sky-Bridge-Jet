@@ -376,6 +376,63 @@ h1 {
   font-weight: 700;
 }
 
+a.resource-list__reference {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a.resource-list__reference:hover {
+  text-decoration: underline;
+}
+
+.resource-list__meta {
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+  margin: 0.5rem 0 0;
+}
+
+/* Phase 9.3.A trip-request detail: read-only itinerary + passenger list. */
+.itinerary {
+  display: grid;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.itinerary__leg {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.itinerary__route {
+  font-weight: 600;
+}
+
+.itinerary__meta {
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+}
+
+.passenger-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.detail-back {
+  margin-top: 1.5rem;
+}
+
+.sbj-link {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.sbj-link:hover {
+  text-decoration: underline;
+}
+
 .account__message {
   margin-top: 1rem;
 }

@@ -114,6 +114,103 @@ describe("Phase 9.2.A auth account-entry routes — exact allow-list", () => {
   });
 });
 
+describe("Phase 9.3.A parameterized reads — closed pattern allow-list", () => {
+  const UUID = "b32413c8-88e9-4c05-89e5-78afb14f5eb4";
+
+  it("accepts GET on the two allow-listed {id} read families", () => {
+    expect(validateProxyRequest(["trip-requests", UUID], "GET")).toMatchObject({
+      ok: true,
+      path: `trip-requests/${UUID}`,
+    });
+    expect(validateProxyRequest(["airports", UUID], "GET")).toMatchObject({
+      ok: true,
+      path: `airports/${UUID}`,
+    });
+  });
+
+  it("rejects non-GET methods on the {id} reads with 405 (reads only, no mutation)", () => {
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+      expect(
+        validateProxyRequest(["trip-requests", UUID], method),
+      ).toMatchObject({ ok: false, status: 405 });
+      expect(validateProxyRequest(["airports", UUID], method)).toMatchObject({
+        ok: false,
+        status: 405,
+      });
+    }
+  });
+
+  it("rejects the collection path without an id (pattern needs exactly two segments)", () => {
+    expect(validateProxyRequest(["trip-requests"], "GET")).toMatchObject({
+      ok: false,
+      status: 404,
+    });
+    expect(validateProxyRequest(["airports"], "GET")).toMatchObject({
+      ok: false,
+      status: 404,
+    });
+  });
+
+  it("rejects extra segments and known mutation sub-routes (no passthrough)", () => {
+    // A trailing segment must not match — guards against reaching submit/cancel/offers.
+    for (const extra of ["extra", "submit", "cancel", "offers", "booking"]) {
+      expect(
+        validateProxyRequest(["trip-requests", UUID, extra], "GET"),
+      ).toMatchObject({ ok: false, status: 404 });
+      expect(
+        validateProxyRequest(["trip-requests", UUID, extra], "POST"),
+      ).toMatchObject({ ok: false, status: 404 });
+    }
+  });
+
+  it("rejects a non-UUID id (opaque garbage never reaches upstream)", () => {
+    for (const bad of ["not-a-uuid", "123", "abc", `${UUID}x`]) {
+      expect(validateProxyRequest(["trip-requests", bad], "GET")).toMatchObject(
+        { ok: false, status: 404 },
+      );
+    }
+  });
+
+  it("rejects encoded separators, traversal, and empty id segments", () => {
+    expect(
+      validateProxyRequest(["trip-requests", `${UUID}%2f..`], "GET"),
+    ).toMatchObject({ ok: false });
+    expect(validateProxyRequest(["trip-requests", ".."], "GET")).toMatchObject({
+      ok: false,
+    });
+    expect(validateProxyRequest(["trip-requests", ""], "GET")).toMatchObject({
+      ok: false,
+    });
+    expect(
+      validateProxyRequest(["trip-requests", "a%2fb"], "GET"),
+    ).toMatchObject({ ok: false });
+  });
+
+  it("does not turn other {id} families into a passthrough or collide on prefixes", () => {
+    // Only trip-requests and airports are parameterized; nothing else is.
+    for (const family of [
+      "bookings",
+      "payments",
+      "offers",
+      "customers",
+      "operators",
+    ]) {
+      expect(validateProxyRequest([family, UUID], "GET")).toMatchObject({
+        ok: false,
+        status: 404,
+      });
+    }
+    // A prefix-similar family name must not match the trip-requests pattern.
+    expect(
+      validateProxyRequest(["trip-requests-x", UUID], "GET"),
+    ).toMatchObject({ ok: false, status: 404 });
+    expect(validateProxyRequest(["airportsx", UUID], "GET")).toMatchObject({
+      ok: false,
+      status: 404,
+    });
+  });
+});
+
 describe("buildUpstreamUrl — trusted host only", () => {
   it("builds the URL from the configured origin, not any request input", () => {
     expect(buildUpstreamUrl("auth/me", "")).toBe(`${UPSTREAM}/api/v1/auth/me`);

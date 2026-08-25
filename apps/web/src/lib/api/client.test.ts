@@ -166,3 +166,44 @@ describe("portalApi — Phase 9.2.A account-entry methods", () => {
     expect(sessionStorage.length).toBe(0);
   });
 });
+
+describe("portalApi — Phase 9.3.A trip-request reads", () => {
+  const TRIP_ID = "b32413c8-88e9-4c05-89e5-78afb14f5eb4";
+  const AIRPORT_ID = "11111111-2222-3333-4444-555555555555";
+
+  it("getTripRequest GETs the exact same-origin proxy path with the org header", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ id: TRIP_ID }));
+    await portalApi.getTripRequest(TRIP_ID, "org-42");
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toBe(`/api/proxy/trip-requests/${TRIP_ID}`);
+    expect(init?.method ?? "GET").toBe("GET");
+    expect(init?.credentials).toBe("same-origin");
+    expect(init?.cache).toBe("no-store");
+    expect((init?.headers as Headers).get("x-organization-id")).toBe("org-42");
+    // A read carries no CSRF token (safe method).
+    expect((init?.headers as Headers).get("x-csrf-token")).toBeNull();
+  });
+
+  it("getAirport GETs the exact same-origin proxy path (public, no org header)", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ id: AIRPORT_ID }));
+    await portalApi.getAirport(AIRPORT_ID);
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toBe(`/api/proxy/airports/${AIRPORT_ID}`);
+    expect(init?.method ?? "GET").toBe("GET");
+    expect((init?.headers as Headers).get("x-organization-id")).toBeNull();
+  });
+
+  it("does not write to browser storage on reads", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(jsonResponse({ id: TRIP_ID })),
+    );
+    await portalApi.getTripRequest(TRIP_ID, "org-42");
+    await portalApi.getAirport(AIRPORT_ID);
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
+  });
+});

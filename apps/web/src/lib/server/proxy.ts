@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   PROXY_ALLOWLIST,
+  PROXY_PATTERN_ALLOWLIST,
   UPSTREAM_API_PREFIX,
   getUpstreamOrigin,
 } from "@/lib/server/config";
@@ -43,10 +44,38 @@ function isUnsafeSegment(segment: string): boolean {
   return false;
 }
 
+/** Canonical UUID (8-4-4-4-12 hex, case-insensitive). Used to bind `:uuid` path params. */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Match already-safe path segments against a single closed pattern. A literal pattern
+ * segment must equal the request segment; a `":uuid"` segment must be a canonical UUID. The
+ * segment counts must be identical, so no extra or missing segment is ever accepted. The
+ * incoming segments have already passed {@link isUnsafeSegment}, so they cannot be empty,
+ * encoded, dot-segments, or contain separators.
+ */
+function matchesPattern(
+  segments: readonly string[],
+  pattern: readonly string[],
+): boolean {
+  if (segments.length !== pattern.length) return false;
+  return pattern.every((patternSegment, index) => {
+    const segment = segments[index];
+    if (patternSegment === ":uuid") return UUID_RE.test(segment);
+    return patternSegment === segment;
+  });
+}
+
 /**
  * Validate the incoming proxy path segments and method against the closed allow-list.
  * Returns the matched relative path and its permitted methods, or a typed rejection with
  * the status code the client should receive (404 unknown path, 405 method not allowed).
+ *
+ * Matching is closed and two-tier: an exact {@link PROXY_ALLOWLIST} entry first, then the
+ * small {@link PROXY_PATTERN_ALLOWLIST} of `{id}` resource reads. It is never a prefix,
+ * wildcard, or passthrough — an unmatched path is always 404, and a matched path still has
+ * to permit the method (else 405).
  */
 export function validateProxyRequest(
   segments: readonly string[],
@@ -56,7 +85,11 @@ export function validateProxyRequest(
     return { ok: false, status: 404, code: "not_found" };
   }
   const path = segments.join("/");
-  const methods = PROXY_ALLOWLIST[path];
+  const methods =
+    PROXY_ALLOWLIST[path] ??
+    PROXY_PATTERN_ALLOWLIST.find((pattern) =>
+      matchesPattern(segments, pattern.segments),
+    )?.methods;
   if (!methods) {
     return { ok: false, status: 404, code: "not_found" };
   }

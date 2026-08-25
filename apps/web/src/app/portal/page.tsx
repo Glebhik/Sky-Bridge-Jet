@@ -25,7 +25,14 @@ export default function PortalDashboardPage() {
       />
       <div className="card-grid">
         <Card>
-          <h2 className="card__title">Trip requests &amp; bookings</h2>
+          <h2 className="card__title">Trip requests</h2>
+          <p>View your private-flight requests and their status.</p>
+          <Link className="card__link" href="/portal/trip-requests">
+            Go to trip requests
+          </Link>
+        </Card>
+        <Card>
+          <h2 className="card__title">Bookings</h2>
           <p>Review your bookings and their status.</p>
           <Link className="card__link" href="/portal/bookings">
             Go to bookings
