@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -21,12 +21,13 @@ from sky_bridge_jet.modules.bookings.schemas import (
     BookingCreate,
     BookingReject,
     BookingResponse,
+    OperatorBookingView,
 )
 from sky_bridge_jet.modules.bookings.services import BookingService
 from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
 from sky_bridge_jet.modules.customer_views import customer_booking_view
-from sky_bridge_jet.modules.iam.dependencies import CurrentPrincipal
-from sky_bridge_jet.modules.iam.domain import Permission
+from sky_bridge_jet.modules.iam.dependencies import ActiveOrganization, CurrentPrincipal
+from sky_bridge_jet.modules.iam.domain import OrganizationType, Permission
 
 router = APIRouter(tags=["bookings"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -34,6 +35,8 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 # 404 not-found and 409 conflict use the safe envelope; the app documents 422
 # and 500 globally.
 _ERR = {"model": ErrorResponse}
+Limit = Annotated[int, Query(ge=1, le=100)]
+Offset = Annotated[int, Query(ge=0)]
 
 
 def register_booking_exception_handlers(app: object) -> None:
@@ -155,6 +158,26 @@ def get_trip_booking(
     return InternalBookingResponse.model_validate(booking)
 
 
+@router.get(
+    "/me/operator-bookings",
+    response_model=list[OperatorBookingView],
+    responses={403: _ERR},
+    operation_id="listMyOperatorBookings",
+)
+def list_my_operator_bookings(
+    principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
+    session: DatabaseSession,
+    limit: Limit = 50,
+    offset: Offset = 0,
+) -> list[OperatorBookingView]:
+    operator_id = access.active_operator_id(principal, active_organization)
+    access.require_operator_access(principal, Permission.BOOKING_READ, operator_id)
+    return BookingService(session).list_pending_for_operator(
+        operator_id, limit=limit, offset=offset
+    )
+
+
 @router.post(
     "/bookings/{booking_id}/confirm",
     response_model=BookingResponse,
@@ -166,13 +189,31 @@ def confirm_booking(
     data: BookingConfirm,
     request: Request,
     principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
     session: DatabaseSession,
 ) -> BookingResponse:
     # Operator ownership is resolved server-side (Booking.operator_id); the body
     # operator_id never controls authorization (the service still validates it against
     # the booking's operator, preserving the operator-mismatch domain check).
     owner_operator = access.operator_of_booking(session, booking_id)
-    access.require_operator_access(principal, Permission.BOOKING_DECIDE, owner_operator)
+    is_operator = any(
+        membership.organization_type is OrganizationType.OPERATOR
+        for membership in principal.memberships
+    )
+    if is_operator:
+        acting_operator = access.active_operator_id(principal, active_organization)
+        access.require_operator_access(principal, Permission.BOOKING_DECIDE, acting_operator)
+    else:
+        access.require_operator_access(principal, Permission.BOOKING_DECIDE, owner_operator)
+        assert owner_operator is not None
+        acting_operator = owner_operator
+    if acting_operator != owner_operator:
+        access.require_operator_access(principal, Permission.BOOKING_DECIDE, owner_operator)
+    scoped = (
+        data
+        if data.operator_id is not None
+        else data.model_copy(update={"operator_id": acting_operator})
+    )
     session.rollback()
     hook = access.platform_operator_exception_hook(
         principal,
@@ -184,7 +225,7 @@ def confirm_booking(
         correlation_id=getattr(request.state, "correlation_id", None),
     )
     return BookingResponse.model_validate(
-        BookingService(session).confirm(booking_id, data, on_commit=hook)
+        BookingService(session).confirm(booking_id, scoped, on_commit=hook)
     )
 
 
@@ -199,10 +240,28 @@ def reject_booking(
     data: BookingReject,
     request: Request,
     principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
     session: DatabaseSession,
 ) -> BookingResponse:
     owner_operator = access.operator_of_booking(session, booking_id)
-    access.require_operator_access(principal, Permission.BOOKING_DECIDE, owner_operator)
+    is_operator = any(
+        membership.organization_type is OrganizationType.OPERATOR
+        for membership in principal.memberships
+    )
+    if is_operator:
+        acting_operator = access.active_operator_id(principal, active_organization)
+        access.require_operator_access(principal, Permission.BOOKING_DECIDE, acting_operator)
+    else:
+        access.require_operator_access(principal, Permission.BOOKING_DECIDE, owner_operator)
+        assert owner_operator is not None
+        acting_operator = owner_operator
+    if acting_operator != owner_operator:
+        access.require_operator_access(principal, Permission.BOOKING_DECIDE, owner_operator)
+    scoped = (
+        data
+        if data.operator_id is not None
+        else data.model_copy(update={"operator_id": acting_operator})
+    )
     session.rollback()
     hook = access.platform_operator_exception_hook(
         principal,
@@ -214,7 +273,7 @@ def reject_booking(
         correlation_id=getattr(request.state, "correlation_id", None),
     )
     return BookingResponse.model_validate(
-        BookingService(session).reject(booking_id, data, on_commit=hook)
+        BookingService(session).reject(booking_id, scoped, on_commit=hook)
     )
 
 

@@ -27,14 +27,15 @@ class BookingCreate(ApiModel):
 
 
 class BookingConfirm(ApiModel):
-    # The acting operator is supplied explicitly while authorization is deferred.
-    operator_id: UUID
+    # Backward-compatible confirmation only. Authority is always derived from the
+    # authenticated principal's active OPERATOR organization.
+    operator_id: UUID | None = None
     confirmation_reference: ConfirmationReference | None = None
     note: ShortNote | None = None
 
 
 class BookingReject(ApiModel):
-    operator_id: UUID
+    operator_id: UUID | None = None
     reason: RejectionReason
     note: ShortNote | None = None
 
@@ -76,3 +77,30 @@ class BookingResponse(ApiModel):
     cancellation_note: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class OperatorBookingLegView(ApiModel):
+    sequence: int
+    origin_airport_code: str
+    destination_airport_code: str
+    departure_at: datetime
+    passenger_count: int
+
+
+class OperatorBookingView(ApiModel):
+    """Minimal operator-safe pending Booking projection (no customer or fee data)."""
+
+    booking_id: UUID
+    reference: str
+    status: BookingStatus
+    trip_request_id: UUID
+    operator_offer_id: UUID
+    currency: str
+    operator_amount_minor: int
+    operator_legal_name: str
+    aircraft_registration: str
+    aircraft_manufacturer: str
+    aircraft_model: str
+    aircraft_category: str
+    legs: list[OperatorBookingLegView]
+    created_at: datetime

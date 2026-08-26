@@ -208,6 +208,41 @@ describe("portalApi — Phase 9.3.A trip-request reads", () => {
   });
 });
 
+describe("portalApi — Phase 9.5.B operator decisions", () => {
+  const BOOKING = "11111111-2222-4333-8444-555555555555";
+  it("uses exact queue and decision contracts without operator_id", async () => {
+    document.cookie = "sbj_csrf=csrf-95b";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() => Promise.resolve(jsonResponse([])));
+    await portalApi.listOperatorBookings("org-95b");
+    await portalApi.confirmOperatorBooking(
+      BOOKING,
+      { confirmation_reference: "REF" },
+      "org-95b",
+    );
+    await portalApi.rejectOperatorBooking(
+      BOOKING,
+      { reason: "OTHER" },
+      "org-95b",
+    );
+    expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/proxy/me/operator-bookings",
+      `/api/proxy/bookings/${BOOKING}/confirm`,
+      `/api/proxy/bookings/${BOOKING}/reject`,
+    ]);
+    for (const [, init] of fetchSpy.mock.calls) {
+      expect((init?.headers as Headers).get("x-organization-id")).toBe(
+        "org-95b",
+      );
+    }
+    for (const [, init] of fetchSpy.mock.calls.slice(1)) {
+      expect((init?.headers as Headers).get("x-csrf-token")).toBe("csrf-95b");
+      expect(String(init?.body)).not.toContain("operator_id");
+    }
+  });
+});
+
 describe("portalApi — Phase 9.4.A customer offer reads", () => {
   const TRIP_ID = "b32413c8-88e9-4c05-89e5-78afb14f5eb4";
   it("GETs the exact same-origin path with org context and no CSRF/storage", async () => {

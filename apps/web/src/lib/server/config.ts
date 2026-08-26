@@ -47,6 +47,7 @@ export const PROXY_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   "me/trip-requests": ["GET"],
   "me/bookings": ["GET"],
   "me/payments": ["GET"],
+  "me/operator-bookings": ["GET"],
   // Phase 9.3.B customer write journey (create DRAFT → submit same DRAFT). Exact paths only.
   passengers: ["POST"],
   "trip-requests": ["POST"],
@@ -97,6 +98,8 @@ export const PROXY_PATTERN_ALLOWLIST: readonly ProxyPattern[] = [
   { segments: ["trip-requests", ":uuid", "submit"], methods: ["POST"] },
   { segments: ["trip-requests", ":uuid", "cancel"], methods: ["POST"] },
   { segments: ["airports", ":uuid"], methods: ["GET"] },
+  { segments: ["bookings", ":uuid", "confirm"], methods: ["POST"] },
+  { segments: ["bookings", ":uuid", "reject"], methods: ["POST"] },
 ];
 
 /**

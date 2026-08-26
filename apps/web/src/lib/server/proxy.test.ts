@@ -153,11 +153,9 @@ describe("Phase 9.5.A Booking routes — minimum closed surface", () => {
       });
   });
 
-  it("keeps detail, decisions, cancellation, and payment closed", () => {
+  it("keeps detail, cancellation, and payment closed", () => {
     for (const [path, method] of [
       [["bookings", BOOKING], "GET"],
-      [["bookings", BOOKING, "confirm"], "POST"],
-      [["bookings", BOOKING, "reject"], "POST"],
       [["bookings", BOOKING, "cancel"], "POST"],
       [["bookings", BOOKING, "payment"], "POST"],
       [["trip-requests", "not-a-uuid", "booking"], "GET"],
@@ -168,6 +166,33 @@ describe("Phase 9.5.A Booking routes — minimum closed surface", () => {
       expect(validateProxyRequest([...path], method)).toMatchObject({
         ok: false,
         status: 404,
+      });
+  });
+});
+
+describe("Phase 9.5.B operator decisions — exact closed surface", () => {
+  const BOOKING = "11111111-2222-4333-8444-555555555555";
+  it("allows only the queue GET and exact decision POSTs", () => {
+    expect(
+      validateProxyRequest(["me", "operator-bookings"], "GET"),
+    ).toMatchObject({ ok: true });
+    for (const action of ["confirm", "reject"])
+      expect(
+        validateProxyRequest(["bookings", BOOKING, action], "POST"),
+      ).toMatchObject({ ok: true });
+  });
+  it("keeps cancellation, payment, malformed and adjacent routes closed", () => {
+    for (const [path, method] of [
+      [["me", "operator-bookings"], "POST"],
+      [["bookings", BOOKING, "confirm"], "GET"],
+      [["bookings", BOOKING, "cancel"], "POST"],
+      [["bookings", BOOKING, "payment"], "POST"],
+      [["bookings", "bad", "confirm"], "POST"],
+      [["bookings", BOOKING, "reject", "extra"], "POST"],
+      [["operators", BOOKING, "bookings"], "GET"],
+    ] as const)
+      expect(validateProxyRequest([...path], method)).toMatchObject({
+        ok: false,
       });
   });
 });
