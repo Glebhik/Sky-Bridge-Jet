@@ -197,6 +197,45 @@ describe("Phase 9.5.B operator decisions — exact closed surface", () => {
   });
 });
 
+describe("Phase 9.6.A customer Payment initiation — exact closed surface", () => {
+  const BOOKING = "11111111-2222-4333-8444-555555555555";
+  const exact = ["bookings", BOOKING, "payment", "initiate"];
+
+  it("allows only POST on the exact canonical Booking path", () => {
+    expect(validateProxyRequest(exact, "POST")).toMatchObject({
+      ok: true,
+      path: exact.join("/"),
+    });
+    for (const method of ["GET", "PUT", "PATCH", "DELETE"])
+      expect(validateProxyRequest(exact, method)).toMatchObject({
+        ok: false,
+        status: 405,
+      });
+  });
+
+  it("keeps malformed, extended, adjacent and all internal Payment routes closed", () => {
+    for (const path of [
+      ["bookings", "bad", "payment", "initiate"],
+      ["bookings", BOOKING, "payment"],
+      [...exact, "extra"],
+      ["bookings", `${BOOKING}%2fextra`, "payment", "initiate"],
+      ["bookings", "..", "payment", "initiate"],
+      ["bookings-extra", BOOKING, "payment", "initiate"],
+      ["payments"],
+      ["payments", BOOKING, "authorize"],
+      ["payments", BOOKING, "capture"],
+      ["payments", BOOKING, "void"],
+      ["payments", BOOKING, "refunds"],
+      ["payments", BOOKING, "allocation"],
+      ["webhooks", "stripe"],
+    ])
+      expect(validateProxyRequest(path, "POST")).toMatchObject({
+        ok: false,
+        status: 404,
+      });
+  });
+});
+
 describe("Phase 9.2.A auth account-entry routes — exact allow-list", () => {
   // Every newly allow-listed path (including the two-segment resend and reset/confirm)
   // forwards on POST, rejects other methods with 405, and no `auth/*` wildcard leaks.

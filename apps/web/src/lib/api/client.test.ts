@@ -243,6 +243,50 @@ describe("portalApi — Phase 9.5.B operator decisions", () => {
   });
 });
 
+describe("portalApi — Phase 9.6.A customer Payment contracts", () => {
+  const A = "11111111-2222-4333-8444-555555555555";
+  const B = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+
+  it("sends one authoritative GET with repeated booking_id values", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse([]));
+    await portalApi.listPayments([A, B], "org-payments");
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toBe(
+      `/api/proxy/me/payments?booking_id=${A}&booking_id=${B}`,
+    );
+    expect(init?.method ?? "GET").toBe("GET");
+    expect((init?.headers as Headers).get("x-organization-id")).toBe(
+      "org-payments",
+    );
+  });
+
+  it("POSTs only the opaque idempotency key with CSRF and organization context", async () => {
+    document.cookie = "sbj_csrf=csrf-payment";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ booking_id: A }));
+    await portalApi.initiatePayment(
+      A,
+      { idempotency_key: "opaque-attempt" },
+      "org-payments",
+    );
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toBe(`/api/proxy/bookings/${A}/payment/initiate`);
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      idempotency_key: "opaque-attempt",
+    });
+    const headers = init?.headers as Headers;
+    expect(headers.get("x-csrf-token")).toBe("csrf-payment");
+    expect(headers.get("x-organization-id")).toBe("org-payments");
+    expect(init?.credentials).toBe("same-origin");
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
+  });
+});
+
 describe("portalApi — Phase 9.4.A customer offer reads", () => {
   const TRIP_ID = "b32413c8-88e9-4c05-89e5-78afb14f5eb4";
   it("GETs the exact same-origin path with org context and no CSRF/storage", async () => {
