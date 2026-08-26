@@ -13,6 +13,7 @@ import {
   serviceItems,
 } from "@/lib/portal/offers";
 import { ApiError } from "@/lib/api/errors";
+import { BookingCreatePanel } from "@/components/portal/BookingCreatePanel";
 import { formatDateTime } from "@/lib/portal/trip-requests";
 import {
   Alert,
@@ -271,6 +272,19 @@ export function OffersSection({
           </div>
         </section>
       ) : null}
+      {state.status === "ready"
+        ? offers
+            .filter((offer) => offer.status === "SELECTED")
+            .map((offer) => (
+              <BookingCreatePanel
+                key={`booking-${offer.id}`}
+                tripRequestId={tripRequestId}
+                tripStatus={tripStatus}
+                selectedOffer={offer}
+                organizationId={organizationId}
+              />
+            ))
+        : null}
       {selectionError === "conflict" ? (
         <Alert tone="warning" title="Offer selection changed">
           This offer can no longer be selected, or another offer has already

@@ -5,6 +5,9 @@ import { useCallback } from "react";
 import { useActiveOrganization } from "@/components/session/org-context";
 import { portalApi } from "@/lib/api/client";
 import type { CustomerBooking } from "@/lib/api/types";
+import { bookingStatusLabel, bookingStatusTone } from "@/lib/portal/bookings";
+import { formatOfferMoney } from "@/lib/portal/offers";
+import { formatDateTime } from "@/lib/portal/trip-requests";
 import { useApiResource } from "@/lib/api/use-resource";
 import {
   Alert,
@@ -19,7 +22,7 @@ import {
  * Bookings placeholder — a real, org-scoped read of the customer's own bookings
  * (`/me/bookings`) with honest loading / empty / error / list states. It renders only the
  * customer-safe fields; there is no fabricated aircraft, pricing, or payment data, and no
- * booking-management workflow (that is a later phase).
+ * Booking mutation other than customer creation remains outside this page.
  */
 export default function PortalBookingsPage() {
   const { activeOrganizationId, hasCustomerContext } = useActiveOrganization();
@@ -65,8 +68,52 @@ export default function PortalBookingsPage() {
                   <span className="resource-list__reference">
                     {booking.reference}
                   </span>
-                  <Badge tone="info">{booking.status}</Badge>
+                  <Badge tone={bookingStatusTone(booking.status)}>
+                    {bookingStatusLabel(booking.status)}
+                  </Badge>
                 </div>
+                <dl className="detail-list">
+                  <div>
+                    <dt>Operator</dt>
+                    <dd>{booking.operator_legal_name}</dd>
+                  </div>
+                  <div>
+                    <dt>Aircraft</dt>
+                    <dd>
+                      {booking.aircraft_manufacturer} {booking.aircraft_model} ·{" "}
+                      {booking.aircraft_category} ·{" "}
+                      {booking.aircraft_registration}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Customer total</dt>
+                    <dd>
+                      {formatOfferMoney(
+                        booking.total_amount_minor,
+                        booking.currency,
+                      )}{" "}
+                      {booking.currency}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Requested</dt>
+                    <dd>
+                      <time dateTime={booking.created_at}>
+                        {formatDateTime(booking.created_at)}
+                      </time>
+                    </dd>
+                  </div>
+                  {booking.confirmed_at ? (
+                    <div>
+                      <dt>Operator confirmed</dt>
+                      <dd>
+                        <time dateTime={booking.confirmed_at}>
+                          {formatDateTime(booking.confirmed_at)}
+                        </time>
+                      </dd>
+                    </div>
+                  ) : null}
+                </dl>
               </Card>
             </li>
           ))}

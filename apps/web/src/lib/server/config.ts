@@ -50,6 +50,8 @@ export const PROXY_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   // Phase 9.3.B customer write journey (create DRAFT → submit same DRAFT). Exact paths only.
   passengers: ["POST"],
   "trip-requests": ["POST"],
+  // Phase 9.5.A: create one customer Booking from an already-selected offer.
+  bookings: ["POST"],
   // Public airport reference collection used by the origin/destination picker (read only).
   airports: ["GET"],
 };
@@ -86,6 +88,8 @@ export interface ProxyPattern {
 export const PROXY_PATTERN_ALLOWLIST: readonly ProxyPattern[] = [
   { segments: ["trip-requests", ":uuid"], methods: ["GET"] },
   { segments: ["trip-requests", ":uuid", "offers"], methods: ["GET"] },
+  // Authoritative duplicate/network-ambiguity recovery; customer-safe response only.
+  { segments: ["trip-requests", ":uuid", "booking"], methods: ["GET"] },
   {
     segments: ["trip-requests", ":uuid", "offers", ":uuid", "select"],
     methods: ["POST"],

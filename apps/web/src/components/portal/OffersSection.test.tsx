@@ -8,15 +8,19 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OffersSection } from "@/components/portal/OffersSection";
+import { ApiError } from "@/lib/api/errors";
 import type { CustomerOffer } from "@/lib/api/types";
 
 const listTripRequestOffers = vi.fn();
 const selectOffer = vi.fn();
+const getTripRequestBooking = vi.fn();
 vi.mock("@/lib/api/client", () => ({
   portalApi: {
     listTripRequestOffers: (...args: unknown[]) =>
       listTripRequestOffers(...args),
     selectOffer: (...args: unknown[]) => selectOffer(...args),
+    getTripRequestBooking: (...args: unknown[]) =>
+      getTripRequestBooking(...args),
   },
 }));
 
@@ -49,6 +53,10 @@ const makeOffer = (
 beforeEach(() => {
   listTripRequestOffers.mockReset();
   selectOffer.mockReset();
+  getTripRequestBooking.mockReset();
+  getTripRequestBooking.mockRejectedValue(
+    new ApiError(404, "not_found", "Not found", "client"),
+  );
 });
 
 afterEach(() => {
@@ -124,9 +132,8 @@ describe("OffersSection", () => {
     expect(screen.getAllByText(/A very long factual/)).toHaveLength(3);
     expect(screen.getAllByRole("article")).toHaveLength(3);
     expect(screen.queryByRole("button", { name: /select/i })).toBeNull();
-    expect(
-      screen.queryByText(/recommended|capacity|cabin|booking|payment/i),
-    ).toBeNull();
+    expect(screen.getByText("Checking booking status…")).toBeTruthy();
+    expect(screen.queryByText(/recommended|capacity|cabin/i)).toBeNull();
   });
   it("isolates offer errors inside the section", async () => {
     listTripRequestOffers.mockRejectedValueOnce(

@@ -75,14 +75,44 @@ export interface AccountRecoveryResponse {
   readonly role: string;
 }
 
-/** Customer-safe booking view (`/me/bookings` item) — no operator/platform split. */
+export type CustomerBookingStatus =
+  | "PENDING_OPERATOR_CONFIRMATION"
+  | "CONFIRMED"
+  | "REJECTED"
+  | "CANCELLED";
+
+/** Customer-safe booking view — no internal identifiers, commercial split, or notes. */
 export interface CustomerBooking {
   readonly id: string;
   readonly reference: string;
-  readonly status: string;
+  readonly trip_request_id: string;
+  readonly operator_offer_id: string;
+  readonly status: CustomerBookingStatus;
   readonly currency: string;
   readonly total_amount_minor: number;
+  readonly tax_amount_minor: number;
+  readonly operator_legal_name: string;
+  readonly aircraft_registration: string;
+  readonly aircraft_manufacturer: string;
+  readonly aircraft_model: string;
+  readonly aircraft_category: string;
+  readonly confirmed_at: string | null;
+  readonly cancelled_at: string | null;
+  readonly cancellation_actor: "CUSTOMER" | "OPERATOR" | "PLATFORM" | null;
+  readonly cancellation_reason:
+    | "SCHEDULE_CHANGE"
+    | "NO_LONGER_REQUIRED"
+    | "OPERATOR_UNAVAILABLE"
+    | "OTHER"
+    | null;
   readonly created_at: string;
+  readonly updated_at: string;
+}
+
+/** Customer Booking creation authority consists only of the selected trip and offer. */
+export interface BookingCreateRequest {
+  readonly trip_request_id: string;
+  readonly operator_offer_id: string;
 }
 
 /** One leg of a trip request (as returned by the customer trip-request read models). */
