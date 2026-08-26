@@ -4,14 +4,14 @@ import { useCallback } from "react";
 
 import { useActiveOrganization } from "@/components/session/org-context";
 import { portalApi } from "@/lib/api/client";
-import type { CustomerBooking } from "@/lib/api/types";
 import { bookingStatusLabel, bookingStatusTone } from "@/lib/portal/bookings";
 import { formatOfferMoney } from "@/lib/portal/offers";
 import { formatDateTime } from "@/lib/portal/trip-requests";
-import { useApiResource } from "@/lib/api/use-resource";
+import { useBookingFreshness } from "@/lib/portal/use-booking-freshness";
 import {
   Alert,
   Badge,
+  Button,
   Card,
   EmptyState,
   LoadingState,
@@ -31,9 +31,10 @@ export default function PortalBookingsPage() {
       portalApi.listBookings(activeOrganizationId ?? undefined, signal),
     [activeOrganizationId],
   );
-  const state = useApiResource<readonly CustomerBooking[]>(
+  const { state, refresh } = useBookingFreshness(
     load,
     `bookings:${activeOrganizationId ?? "none"}`,
+    hasCustomerContext,
   );
 
   return (
@@ -60,64 +61,85 @@ export default function PortalBookingsPage() {
           description="When you book a trip, it will appear here."
         />
       ) : (
-        <ul className="resource-list trip-list">
-          {state.data.map((booking) => (
-            <li key={booking.id}>
-              <Card as="article" className="trip-card">
-                <div className="resource-list__row">
-                  <span className="resource-list__reference">
-                    {booking.reference}
-                  </span>
-                  <Badge tone={bookingStatusTone(booking.status)}>
-                    {bookingStatusLabel(booking.status)}
-                  </Badge>
-                </div>
-                <dl className="detail-list">
-                  <div>
-                    <dt>Operator</dt>
-                    <dd>{booking.operator_legal_name}</dd>
+        <section aria-busy={state.refreshing}>
+          <div className="booking-freshness-controls">
+            <Button
+              variant="secondary"
+              type="button"
+              disabled={state.refreshing}
+              onClick={() => void refresh()}
+            >
+              {state.refreshing ? "Refreshing…" : "Refresh status"}
+            </Button>
+            {state.warning ? (
+              <p
+                className="booking-freshness-warning"
+                role="status"
+                aria-live="polite"
+              >
+                {state.warning}
+              </p>
+            ) : null}
+          </div>
+          <ul className="resource-list trip-list">
+            {state.data.map((booking) => (
+              <li key={booking.id}>
+                <Card as="article" className="trip-card">
+                  <div className="resource-list__row">
+                    <span className="resource-list__reference">
+                      {booking.reference}
+                    </span>
+                    <Badge tone={bookingStatusTone(booking.status)}>
+                      {bookingStatusLabel(booking.status)}
+                    </Badge>
                   </div>
-                  <div>
-                    <dt>Aircraft</dt>
-                    <dd>
-                      {booking.aircraft_manufacturer} {booking.aircraft_model} ·{" "}
-                      {booking.aircraft_category} ·{" "}
-                      {booking.aircraft_registration}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Customer total</dt>
-                    <dd>
-                      {formatOfferMoney(
-                        booking.total_amount_minor,
-                        booking.currency,
-                      )}{" "}
-                      {booking.currency}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Requested</dt>
-                    <dd>
-                      <time dateTime={booking.created_at}>
-                        {formatDateTime(booking.created_at)}
-                      </time>
-                    </dd>
-                  </div>
-                  {booking.confirmed_at ? (
+                  <dl className="detail-list">
                     <div>
-                      <dt>Operator confirmed</dt>
+                      <dt>Operator</dt>
+                      <dd>{booking.operator_legal_name}</dd>
+                    </div>
+                    <div>
+                      <dt>Aircraft</dt>
                       <dd>
-                        <time dateTime={booking.confirmed_at}>
-                          {formatDateTime(booking.confirmed_at)}
+                        {booking.aircraft_manufacturer} {booking.aircraft_model}{" "}
+                        · {booking.aircraft_category} ·{" "}
+                        {booking.aircraft_registration}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Customer total</dt>
+                      <dd>
+                        {formatOfferMoney(
+                          booking.total_amount_minor,
+                          booking.currency,
+                        )}{" "}
+                        {booking.currency}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Requested</dt>
+                      <dd>
+                        <time dateTime={booking.created_at}>
+                          {formatDateTime(booking.created_at)}
                         </time>
                       </dd>
                     </div>
-                  ) : null}
-                </dl>
-              </Card>
-            </li>
-          ))}
-        </ul>
+                    {booking.confirmed_at ? (
+                      <div>
+                        <dt>Operator confirmed</dt>
+                        <dd>
+                          <time dateTime={booking.confirmed_at}>
+                            {formatDateTime(booking.confirmed_at)}
+                          </time>
+                        </dd>
+                      </div>
+                    ) : null}
+                  </dl>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </>
   );

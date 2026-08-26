@@ -2160,6 +2160,24 @@ a.resource-list__reference:hover {
   padding-left: 0;
 }
 
+.portal .booking-freshness-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.portal .booking-freshness-controls .button {
+  min-height: 2.75rem;
+}
+
+.portal .booking-freshness-warning {
+  color: var(--p-caution);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .portal .empty-copy {
   color: var(--p-text-muted);
   margin: 0.35rem 0 0;
@@ -2412,6 +2430,15 @@ a.resource-list__reference:hover {
   .portal .dashboard-summary__head .button,
   .portal .resource-list__actions .button,
   .portal .resource-list__actions a.button {
+    width: 100%;
+  }
+
+  .portal .booking-freshness-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .portal .booking-freshness-controls .button {
     width: 100%;
   }
 }

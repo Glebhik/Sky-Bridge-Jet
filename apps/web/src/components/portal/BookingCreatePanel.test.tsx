@@ -254,4 +254,21 @@ describe("BookingCreatePanel", () => {
       screen.queryByRole("button", { name: /create booking/i }),
     ).toBeNull();
   });
+
+  it.each([
+    ["CONFIRMED", "Confirmed by the operator"],
+    ["REJECTED", "The operator could not confirm this booking"],
+    ["CANCELLED", "This booking was cancelled"],
+  ] as const)(
+    "presents authoritative existing %s status",
+    async (status, label) => {
+      getTripRequestBooking.mockResolvedValueOnce({ ...booking, status });
+      renderPanel();
+      expect(await screen.findByText(new RegExp(label))).toBeTruthy();
+      expect(
+        screen.getByRole("link", { name: "View bookings" }),
+      ).toHaveAttribute("href", "/portal/bookings");
+      expect(createBooking).not.toHaveBeenCalled();
+    },
+  );
 });
