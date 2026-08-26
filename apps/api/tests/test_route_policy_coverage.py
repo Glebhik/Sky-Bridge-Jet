@@ -26,9 +26,9 @@ def test_verified_route_counts() -> None:
     # Phase 9.1.A added one route — the authenticated customer-account recovery endpoint
     # (83 → 84; 79 → 80 ops). Phase 9.2.A adds one public route — the enumeration-safe
     # verification-resend endpoint (84 → 85; 80 → 81 ops).
-    assert len(registered) == 86, sorted(registered)
+    assert len(registered) == 87, sorted(registered)
     openapi_ops = {r for r in registered if r[1] not in DOCUMENTATION_ROUTES}
-    assert len(openapi_ops) == 82
+    assert len(openapi_ops) == 83
 
 
 def test_every_route_has_exactly_one_disposition() -> None:
@@ -71,6 +71,7 @@ def test_no_versioned_pending_route_is_public() -> None:
         Disposition.PHASE_9_0A_3_BOUND,
         Disposition.PHASE_9_0B_BOUND,
         Disposition.PHASE_9_1A_BOUND,
+        Disposition.PHASE_9_6B0_BOUND,
         Disposition.ALREADY_BOUND,
     }
     for policy in ROUTE_POLICIES:
@@ -93,6 +94,12 @@ def test_payment_operations_are_fully_bound_no_pending_remains() -> None:
     assert len(bound) == 6, sorted(bound)
     # The 9.0.A-3-pending disposition no longer exists; no pending payment route remains.
     assert not hasattr(Disposition, "PHASE_9_0A_3_PENDING")
+
+
+def test_customer_payment_initiation_is_narrowly_bound() -> None:
+    index = policy_index()
+    bound = [k for k, p in index.items() if p.disposition is Disposition.PHASE_9_6B0_BOUND]
+    assert bound == [("POST", "/api/v1/bookings/{booking_id}/payment/initiate")]
 
 
 def test_customer_my_list_endpoints_are_bound() -> None:

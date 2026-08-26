@@ -16,7 +16,11 @@ from sky_bridge_jet.modules.audience import (
 )
 from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
 from sky_bridge_jet.modules.customer_views import customer_payment_view
-from sky_bridge_jet.modules.iam.dependencies import CurrentPrincipal, require_permission
+from sky_bridge_jet.modules.iam.dependencies import (
+    ActiveOrganization,
+    CurrentPrincipal,
+    require_permission,
+)
 from sky_bridge_jet.modules.iam.domain import Permission
 from sky_bridge_jet.modules.payments.domain import PaymentConflictError
 from sky_bridge_jet.modules.payments.models import Payment, PaymentOperation
@@ -26,6 +30,8 @@ from sky_bridge_jet.modules.payments.provider import (
 )
 from sky_bridge_jet.modules.payments.schemas import (
     AllocationResponse,
+    CustomerPaymentInitiate,
+    CustomerPaymentInitiateResponse,
     PaymentAuthorize,
     PaymentCapture,
     PaymentResponse,
@@ -162,6 +168,35 @@ def create_payment(
         correlation_id=_correlation(request),
     )
     return _payment(PaymentService(session).create_for_booking(booking_id, on_commit=hook))
+
+
+@router.post(
+    "/bookings/{booking_id}/payment/initiate",
+    response_model=CustomerPaymentInitiateResponse,
+    responses={403: _ERR, 404: _ERR, 409: _ERR, 422: _ERR},
+    operation_id="initiateBookingPayment",
+)
+def initiate_booking_payment(
+    booking_id: UUID,
+    data: CustomerPaymentInitiate,
+    request: Request,
+    principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
+    session: DatabaseSession,
+) -> CustomerPaymentInitiateResponse:
+    """Initiate fake/provider-neutral authorization for the customer's own booking."""
+    active_customer = access.active_customer_id(principal, active_organization)
+    owner = access.owner_of_booking(session, booking_id)
+    access.require_customer_access(principal, Permission.PAYMENT_INITIATE, owner)
+    if owner != active_customer:
+        # Preserve cross-tenant concealment even when the principal has several
+        # legitimate customer memberships and selected the wrong active one.
+        from sky_bridge_jet.modules.core_aviation.domain import ResourceNotFoundError
+
+        raise ResourceNotFoundError("Booking was not found")
+    session.rollback()
+    payment = PaymentService(session).initiate_for_customer(booking_id, data)
+    return CustomerPaymentInitiateResponse.model_validate(customer_payment_view(payment))
 
 
 @router.get(

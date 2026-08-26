@@ -41,6 +41,7 @@ from sky_bridge_jet.modules.payments.repositories import (
     PaymentRepository,
 )
 from sky_bridge_jet.modules.payments.schemas import (
+    CustomerPaymentInitiate,
     PaymentAuthorize,
     PaymentCapture,
     PaymentVoid,
@@ -127,53 +128,103 @@ class PaymentService:
     ) -> Payment:
         """Create the single payment for a booking; idempotent per booking."""
         with self.session.begin():
+            return self._create_for_booking_locked(
+                booking_id, provider_kind=provider_kind, on_commit=on_commit
+            )
+
+    def _create_for_booking_locked(
+        self,
+        booking_id: UUID,
+        *,
+        provider_kind: PaymentProviderKind | None = None,
+        on_commit: OnCommit = None,
+    ) -> Payment:
+        booking = self.bookings.get_for_update(booking_id)
+        if booking is None:
+            raise _not_found("Booking")
+        if not is_booking_payable(booking.status):
+            raise PaymentEligibilityError("Booking is not eligible for payment")
+        existing = self.payments.get_by_booking_for_update(booking_id)
+        if existing is not None:
+            return existing
+        kind = self._selected_provider_kind(provider_kind)
+        if kind is PaymentProviderKind.STRIPE:
+            from sky_bridge_jet.modules.financials.services import evaluate_financial_eligibility
+
+            decision = evaluate_financial_eligibility(self.session, booking.operator_id, kind)
+            if not decision.eligible:
+                raise PaymentEligibilityError(
+                    "Operator is not financially onboarded for PSP-backed payments"
+                )
+        payment = self.payments.add(
+            Payment(
+                reference=generate_payment_reference(),
+                booking_id=booking.id,
+                status=PaymentStatus.CREATED,
+                currency=booking.currency,
+                payment_provider=kind,
+                operator_amount_minor=booking.operator_amount_minor,
+                platform_fee_minor=booking.platform_fee_minor,
+                tax_amount_minor=booking.tax_amount_minor,
+                total_amount_minor=booking.total_amount_minor,
+                captured_amount_minor=0,
+                refunded_amount_minor=0,
+            )
+        )
+        self.session.flush()
+        if on_commit is not None:
+            on_commit(self.session)
+        return payment
+
+    # -- Financial commands -------------------------------------------------
+
+    def initiate_for_customer(
+        self, booking_id: UUID, data: CustomerPaymentInitiate, *, on_commit: OnCommit = None
+    ) -> Payment:
+        """Create/reuse and authorize one booking payment through the existing engine.
+
+        The global key is checked while the Booking is locked and before creation,
+        early return, or provider invocation. Creation plus authorization then share
+        one transaction; the operation-key unique constraint remains the final
+        concurrency backstop.
+        """
+        with self.session.begin():
             booking = self.bookings.get_for_update(booking_id)
             if booking is None:
                 raise _not_found("Booking")
             if not is_booking_payable(booking.status):
                 raise PaymentEligibilityError("Booking is not eligible for payment")
-
-            existing = self.payments.get_by_booking(booking_id)
-            if existing is not None:
-                # Idempotent replay: no new payment is created, so no audit event.
-                return existing
-
-            kind = self._selected_provider_kind(provider_kind)
-            if kind is PaymentProviderKind.STRIPE:
-                # A PSP-backed payment requires the operator to be financially
-                # onboarded. Imported lazily to keep the payments module free of a
-                # hard dependency on the financials module (breaks the cycle).
-                from sky_bridge_jet.modules.financials.services import (
-                    evaluate_financial_eligibility,
+            payment = self.payments.get_by_booking_for_update(booking_id)
+            self.operations.lock_idempotency_key(data.idempotency_key)
+            operation = self.operations.get_by_idempotency_key(data.idempotency_key)
+            if operation is not None and (
+                payment is None
+                or operation.payment_id != payment.id
+                or operation.operation is not PaymentOperationType.AUTHORIZE
+            ):
+                raise IdempotencyConflictError(
+                    "Idempotency key has already been used for a different operation"
                 )
-
-                decision = evaluate_financial_eligibility(self.session, booking.operator_id, kind)
-                if not decision.eligible:
-                    raise PaymentEligibilityError(
-                        "Operator is not financially onboarded for PSP-backed payments"
-                    )
-
-            payment = self.payments.add(
-                Payment(
-                    reference=generate_payment_reference(),
-                    booking_id=booking.id,
-                    status=PaymentStatus.CREATED,
-                    currency=booking.currency,
-                    payment_provider=kind,
-                    operator_amount_minor=booking.operator_amount_minor,
-                    platform_fee_minor=booking.platform_fee_minor,
-                    tax_amount_minor=booking.tax_amount_minor,
-                    total_amount_minor=booking.total_amount_minor,
-                    captured_amount_minor=0,
-                    refunded_amount_minor=0,
-                )
+            if payment is None:
+                payment = self._create_for_booking_locked(booking_id)
+            if operation is not None:
+                return payment
+            if (
+                payment.status
+                in {
+                    PaymentStatus.AUTHORIZED,
+                    PaymentStatus.CAPTURED,
+                    PaymentStatus.PARTIALLY_REFUNDED,
+                    PaymentStatus.REFUNDED,
+                }
+                or payment.requires_customer_action
+            ):
+                return payment
+            if payment.status is PaymentStatus.CANCELLED:
+                raise InvalidPaymentStateError("Payment cannot be authorized in its current state")
+            return self._authorize_locked(
+                payment, PaymentAuthorize(idempotency_key=data.idempotency_key), on_commit=on_commit
             )
-            self.session.flush()
-            if on_commit is not None:
-                on_commit(self.session)
-            return payment
-
-    # -- Financial commands -------------------------------------------------
 
     def authorize(
         self, payment_id: UUID, data: PaymentAuthorize, *, on_commit: OnCommit = None
@@ -182,75 +233,77 @@ class PaymentService:
             payment = self.payments.get_for_update(payment_id)
             if payment is None:
                 raise _not_found("Payment")
-            if self._replay(data.idempotency_key, payment, PaymentOperationType.AUTHORIZE):
-                return payment
+            return self._authorize_locked(payment, data, on_commit=on_commit)
 
-            booking = self.bookings.get(payment.booking_id)
-            if booking is None:
-                raise _not_found("Booking")
-            if booking.status in {BookingStatus.REJECTED, BookingStatus.CANCELLED}:
-                raise PaymentEligibilityError("Booking is not eligible for authorization")
-            if not is_authorizable(payment.status):
-                raise InvalidPaymentStateError("Payment cannot be authorized in its current state")
-
-            result = self._provider_for(payment).authorize(
-                amount_minor=payment.total_amount_minor,
-                currency=payment.currency,
-                payment_method_reference=data.payment_method_reference,
-                idempotency_key=data.idempotency_key,
-            )
-            payment.provider_status = result.provider_status
-            if result.outcome is ProviderOutcome.FAILED:
-                payment.status = validate_payment_transition(
-                    payment.status, PaymentStatus.AUTHORIZATION_FAILED
-                )
-                self._record(
-                    payment,
-                    PaymentOperationType.AUTHORIZE,
-                    PaymentOperationResult.FAILED,
-                    data.idempotency_key,
-                    amount_minor=payment.total_amount_minor,
-                    provider_reference=result.provider_reference,
-                    failure_code=result.failure_code,
-                )
-            elif result.outcome is ProviderOutcome.REQUIRES_ACTION:
-                # SCA/3DS: the intent exists but authorization is not final until the
-                # customer completes an action off-platform. The payment stays CREATED;
-                # a later verified webhook transitions it to AUTHORIZED. We record the
-                # command so a retry with the same key replays instead of re-creating
-                # an intent, and expose the client action transiently (never persisted).
-                payment.requires_customer_action = True
-                payment.provider_payment_reference = result.provider_reference
-                self._record(
-                    payment,
-                    PaymentOperationType.AUTHORIZE,
-                    PaymentOperationResult.SUCCEEDED,
-                    data.idempotency_key,
-                    amount_minor=payment.total_amount_minor,
-                    provider_reference=result.provider_reference,
-                )
-                payment.client_action = result.client_action
-            else:
-                payment.status = validate_payment_transition(
-                    payment.status, PaymentStatus.AUTHORIZED
-                )
-                payment.authorized_amount_minor = payment.total_amount_minor
-                payment.provider_payment_reference = result.provider_reference
-                payment.authorized_at = _utc_now()
-                payment.requires_customer_action = False
-                self._record(
-                    payment,
-                    PaymentOperationType.AUTHORIZE,
-                    PaymentOperationResult.SUCCEEDED,
-                    data.idempotency_key,
-                    amount_minor=payment.total_amount_minor,
-                    provider_reference=result.provider_reference,
-                )
-            self.session.flush()
-            # Audit a committed authorize (incl. SCA-pending), but never a decline.
-            if on_commit is not None and payment.status is not PaymentStatus.AUTHORIZATION_FAILED:
-                on_commit(self.session)
+    def _authorize_locked(
+        self, payment: Payment, data: PaymentAuthorize, *, on_commit: OnCommit = None
+    ) -> Payment:
+        if self._replay(data.idempotency_key, payment, PaymentOperationType.AUTHORIZE):
             return payment
+
+        booking = self.bookings.get(payment.booking_id)
+        if booking is None:
+            raise _not_found("Booking")
+        if booking.status in {BookingStatus.REJECTED, BookingStatus.CANCELLED}:
+            raise PaymentEligibilityError("Booking is not eligible for authorization")
+        if not is_authorizable(payment.status):
+            raise InvalidPaymentStateError("Payment cannot be authorized in its current state")
+
+        result = self._provider_for(payment).authorize(
+            amount_minor=payment.total_amount_minor,
+            currency=payment.currency,
+            payment_method_reference=data.payment_method_reference,
+            idempotency_key=data.idempotency_key,
+        )
+        payment.provider_status = result.provider_status
+        if result.outcome is ProviderOutcome.FAILED:
+            payment.status = validate_payment_transition(
+                payment.status, PaymentStatus.AUTHORIZATION_FAILED
+            )
+            self._record(
+                payment,
+                PaymentOperationType.AUTHORIZE,
+                PaymentOperationResult.FAILED,
+                data.idempotency_key,
+                amount_minor=payment.total_amount_minor,
+                provider_reference=result.provider_reference,
+                failure_code=result.failure_code,
+            )
+        elif result.outcome is ProviderOutcome.REQUIRES_ACTION:
+            # SCA/3DS: the intent exists but authorization is not final until the
+            # customer completes an action off-platform. The payment stays CREATED;
+            # a later verified webhook transitions it to AUTHORIZED. We record the
+            # command so a retry with the same key replays instead of re-creating
+            # an intent, and expose the client action transiently (never persisted).
+            payment.requires_customer_action = True
+            payment.provider_payment_reference = result.provider_reference
+            self._record(
+                payment,
+                PaymentOperationType.AUTHORIZE,
+                PaymentOperationResult.SUCCEEDED,
+                data.idempotency_key,
+                amount_minor=payment.total_amount_minor,
+                provider_reference=result.provider_reference,
+            )
+            payment.client_action = result.client_action
+        else:
+            payment.status = validate_payment_transition(payment.status, PaymentStatus.AUTHORIZED)
+            payment.authorized_amount_minor = payment.total_amount_minor
+            payment.provider_payment_reference = result.provider_reference
+            payment.authorized_at = _utc_now()
+            payment.requires_customer_action = False
+            self._record(
+                payment,
+                PaymentOperationType.AUTHORIZE,
+                PaymentOperationResult.SUCCEEDED,
+                data.idempotency_key,
+                amount_minor=payment.total_amount_minor,
+                provider_reference=result.provider_reference,
+            )
+        self.session.flush()
+        if on_commit is not None and payment.status is not PaymentStatus.AUTHORIZATION_FAILED:
+            on_commit(self.session)
+        return payment
 
     def capture(
         self, payment_id: UUID, data: PaymentCapture, *, on_commit: OnCommit = None
@@ -449,6 +502,7 @@ class PaymentService:
     def _replay_operation(
         self, idempotency_key: str, payment: Payment, operation: PaymentOperationType
     ) -> PaymentOperation | None:
+        self.operations.lock_idempotency_key(idempotency_key)
         existing = self.operations.get_by_idempotency_key(idempotency_key)
         if existing is None:
             return None
