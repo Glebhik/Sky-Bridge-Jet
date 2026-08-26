@@ -18,6 +18,14 @@ import {
   PageHeading,
 } from "@/components/ui/primitives";
 
+function bookingVisualKind(status: string): string {
+  if (status === "PENDING_OPERATOR_CONFIRMATION") return "pending";
+  if (status === "CONFIRMED") return "confirmed";
+  if (status === "REJECTED") return "rejected";
+  if (status === "CANCELLED") return "cancelled";
+  return "unknown";
+}
+
 /**
  * Bookings placeholder — a real, org-scoped read of the customer's own bookings
  * (`/me/bookings`) with honest loading / empty / error / list states. It renders only the
@@ -38,7 +46,7 @@ export default function PortalBookingsPage() {
   );
 
   return (
-    <>
+    <div className="bookings-landing">
       <PageHeading
         title="Bookings"
         description="Bookings linked to your customer account."
@@ -61,10 +69,10 @@ export default function PortalBookingsPage() {
           description="When you book a trip, it will appear here."
         />
       ) : (
-        <section aria-busy={state.refreshing}>
+        <section className="bookings-live" aria-busy={state.refreshing}>
           <div className="booking-freshness-controls">
             <Button
-              variant="secondary"
+              variant="ghost"
               type="button"
               disabled={state.refreshing}
               onClick={() => void refresh()}
@@ -81,66 +89,80 @@ export default function PortalBookingsPage() {
               </p>
             ) : null}
           </div>
-          <ul className="resource-list trip-list">
-            {state.data.map((booking) => (
-              <li key={booking.id}>
-                <Card as="article" className="trip-card">
-                  <div className="resource-list__row">
-                    <span className="resource-list__reference">
-                      {booking.reference}
-                    </span>
-                    <Badge tone={bookingStatusTone(booking.status)}>
-                      {bookingStatusLabel(booking.status)}
-                    </Badge>
-                  </div>
-                  <dl className="detail-list">
-                    <div>
-                      <dt>Operator</dt>
-                      <dd>{booking.operator_legal_name}</dd>
-                    </div>
-                    <div>
-                      <dt>Aircraft</dt>
-                      <dd>
-                        {booking.aircraft_manufacturer} {booking.aircraft_model}{" "}
-                        · {booking.aircraft_category} ·{" "}
-                        {booking.aircraft_registration}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Customer total</dt>
-                      <dd>
-                        {formatOfferMoney(
-                          booking.total_amount_minor,
-                          booking.currency,
-                        )}{" "}
-                        {booking.currency}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Requested</dt>
-                      <dd>
-                        <time dateTime={booking.created_at}>
-                          {formatDateTime(booking.created_at)}
-                        </time>
-                      </dd>
-                    </div>
-                    {booking.confirmed_at ? (
+          <ul className="resource-list booking-list">
+            {state.data.map((booking) => {
+              const kind = bookingVisualKind(booking.status);
+              return (
+                <li key={booking.id}>
+                  <Card
+                    as="article"
+                    className={`booking-card booking-card--${kind}`}
+                  >
+                    <header className="booking-card__head">
+                      <h2 className="booking-card__reference">
+                        {booking.reference}
+                      </h2>
+                      <div className="booking-card__status">
+                        <span
+                          className={`booking-card__mark booking-card__mark--${kind}`}
+                          aria-hidden="true"
+                        />
+                        <Badge tone={bookingStatusTone(booking.status)}>
+                          {bookingStatusLabel(booking.status)}
+                        </Badge>
+                      </div>
+                    </header>
+                    <dl className="detail-list booking-card__details">
                       <div>
-                        <dt>Operator confirmed</dt>
+                        <dt>Operator</dt>
+                        <dd className="booking-card__operator">
+                          {booking.operator_legal_name}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Aircraft</dt>
+                        <dd className="booking-card__aircraft">
+                          {booking.aircraft_manufacturer}{" "}
+                          {booking.aircraft_model} · {booking.aircraft_category}{" "}
+                          · {booking.aircraft_registration}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Customer total</dt>
+                        <dd className="booking-card__total">
+                          {formatOfferMoney(
+                            booking.total_amount_minor,
+                            booking.currency,
+                          )}{" "}
+                          {booking.currency}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Requested</dt>
                         <dd>
-                          <time dateTime={booking.confirmed_at}>
-                            {formatDateTime(booking.confirmed_at)}
+                          <time dateTime={booking.created_at}>
+                            {formatDateTime(booking.created_at)}
                           </time>
                         </dd>
                       </div>
-                    ) : null}
-                  </dl>
-                </Card>
-              </li>
-            ))}
+                      {booking.confirmed_at ? (
+                        <div>
+                          <dt>Operator confirmed</dt>
+                          <dd>
+                            <time dateTime={booking.confirmed_at}>
+                              {formatDateTime(booking.confirmed_at)}
+                            </time>
+                          </dd>
+                        </div>
+                      ) : null}
+                    </dl>
+                  </Card>
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}
-    </>
+    </div>
   );
 }

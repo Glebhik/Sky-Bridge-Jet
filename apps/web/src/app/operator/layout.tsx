@@ -19,11 +19,13 @@ export default async function OperatorLayout({
   }
   if (session.status === "error" || session.status === "loading") {
     return (
-      <Container>
-        <Alert tone="error" title="We couldn’t load your account">
-          Please refresh to try again.
-        </Alert>
-      </Container>
+      <div className="operator">
+        <Container>
+          <Alert tone="error" title="We couldn’t load your account">
+            Please refresh to try again.
+          </Alert>
+        </Container>
+      </div>
     );
   }
   const operatorOrganizations = session.memberships.filter(
@@ -31,15 +33,21 @@ export default async function OperatorLayout({
   );
   if (operatorOrganizations.length === 0) {
     return (
-      <Container>
-        <Alert tone="error" title="Operator access required">
-          This area is available only to members of an operator organization.
-        </Alert>
-      </Container>
+      <div className="operator">
+        <Container>
+          <Alert tone="error" title="Operator access required">
+            This area is available only to members of an operator organization.
+          </Alert>
+        </Container>
+      </div>
     );
   }
   return (
-    <main id="operator-main" className="operator-main">
+    <main id="operator-main" className="operator operator-main">
+      <div className="operator__atmosphere" aria-hidden="true">
+        <div className="operator__grid" />
+        <div className="operator__glow" />
+      </div>
       {children}
     </main>
   );

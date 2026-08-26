@@ -88,11 +88,13 @@ export function OperatorBookingQueue({
 
   if (organizations.length === 0) {
     return (
-      <Container>
-        <Alert tone="error" title="Operator access required">
-          This area is available only to members of an operator organization.
-        </Alert>
-      </Container>
+      <div className="operator">
+        <Container>
+          <Alert tone="error" title="Operator access required">
+            This area is available only to members of an operator organization.
+          </Alert>
+        </Container>
+      </div>
     );
   }
 
@@ -124,148 +126,189 @@ export function OperatorBookingQueue({
   }
 
   return (
-    <Container>
-      <PageHeading
-        title="Booking requests"
-        description="Pending bookings awaiting your decision."
-      />
-      {organizations.length > 1 ? (
-        <label>
-          Operator organization{" "}
-          <select
-            value={organizationId}
-            onChange={(event) => {
-              activeOrganizationId.current = event.target.value;
-              setItems(null);
-              setError(false);
-              setSelectedId(null);
-              setOrganizationId(event.target.value);
-            }}
-          >
-            <option value="">Choose operator organization</option>
-            {organizations.map((org, index) => (
-              <option key={org.id} value={org.id}>
-                Operator organization {index + 1} — {org.role}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
-      {!organizationId ? (
-        <EmptyState
-          title="Choose operator organization"
-          description="Select the operator organization whose booking requests you want to view."
+    <div className="operator">
+      <Container>
+        <PageHeading
+          title="Booking requests"
+          description="Pending bookings awaiting your decision."
         />
-      ) : error ? (
-        <Alert tone="error" title="Booking requests could not be refreshed">
-          No decision was retried automatically. Refresh to view the
-          authoritative state.
-        </Alert>
-      ) : null}
-      {!organizationId ? null : items === null ? (
-        <LoadingState label="Loading booking requests…" />
-      ) : items.length === 0 ? (
-        <EmptyState
-          title="No pending booking requests"
-          description="There are no bookings awaiting your decision."
-        />
-      ) : (
-        <div className="operator-booking-list">
-          {items.map((booking) => {
-            const expanded = selectedId === booking.booking_id;
-            const pending = pendingId === booking.booking_id;
-            return (
-              <Card
-                key={booking.booking_id}
-                as="article"
-                className="operator-booking-card"
-              >
-                <h2>{booking.reference}</h2>
-                <p>
-                  <strong>Awaiting your decision</strong>
-                </p>
-                {booking.legs.map((leg) => (
-                  <p key={leg.sequence}>
-                    {leg.origin_airport_code} → {leg.destination_airport_code} ·{" "}
-                    <time dateTime={leg.departure_at}>
-                      {new Date(leg.departure_at).toLocaleString("en-IE")}
-                    </time>{" "}
-                    · {leg.passenger_count} passengers
-                  </p>
-                ))}
-                <p>
-                  {booking.aircraft_manufacturer} {booking.aircraft_model} ·{" "}
-                  {booking.aircraft_registration} · {booking.aircraft_category}
-                </p>
-                <p>
-                  Operator amount:{" "}
-                  {money(booking.operator_amount_minor, booking.currency)}
-                </p>
-                {!activeOrganization?.canDecide ? (
-                  <p>Read-only access</p>
-                ) : !expanded ? (
-                  <Button
-                    variant="secondary"
-                    onClick={() => setSelectedId(booking.booking_id)}
-                  >
-                    Review decision
-                  </Button>
-                ) : (
-                  <div aria-busy={pending}>
-                    <p>
-                      Confirming records the operator&apos;s decision. It does
-                      not capture payment or ticket the flight.
+        {organizations.length > 1 ? (
+          <label className="operator-org">
+            Operator organization{" "}
+            <select
+              className="operator-org__select"
+              value={organizationId}
+              onChange={(event) => {
+                activeOrganizationId.current = event.target.value;
+                setItems(null);
+                setError(false);
+                setSelectedId(null);
+                setOrganizationId(event.target.value);
+              }}
+            >
+              <option value="">Choose operator organization</option>
+              {organizations.map((org, index) => (
+                <option key={org.id} value={org.id}>
+                  Operator organization {index + 1} — {org.role}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {!organizationId ? (
+          <EmptyState
+            title="Choose operator organization"
+            description="Select the operator organization whose booking requests you want to view."
+          />
+        ) : error ? (
+          <Alert tone="error" title="Booking requests could not be refreshed">
+            No decision was retried automatically. Refresh to view the
+            authoritative state.
+          </Alert>
+        ) : null}
+        {!organizationId ? null : items === null ? (
+          <LoadingState label="Loading booking requests…" />
+        ) : items.length === 0 ? (
+          <EmptyState
+            title="No pending booking requests"
+            description="There are no bookings awaiting your decision."
+          />
+        ) : (
+          <div className="operator-booking-list">
+            {items.map((booking) => {
+              const expanded = selectedId === booking.booking_id;
+              const pending = pendingId === booking.booking_id;
+              return (
+                <Card
+                  key={booking.booking_id}
+                  as="article"
+                  className={
+                    expanded
+                      ? "operator-booking-card operator-booking-card--review"
+                      : "operator-booking-card"
+                  }
+                >
+                  <header className="operator-booking-card__head">
+                    <h2>{booking.reference}</h2>
+                    <p className="operator-booking-card__status">
+                      <span
+                        className="booking-card__mark booking-card__mark--pending"
+                        aria-hidden="true"
+                      />
+                      <strong>Awaiting your decision</strong>
                     </p>
+                  </header>
+                  <dl className="detail-list operator-booking-card__details">
+                    {booking.legs.map((leg) => (
+                      <div key={leg.sequence}>
+                        <dt>Route</dt>
+                        <dd className="operator-booking-card__route">
+                          {leg.origin_airport_code} →{" "}
+                          {leg.destination_airport_code}
+                        </dd>
+                        <dt>Departure</dt>
+                        <dd>
+                          <time dateTime={leg.departure_at}>
+                            {new Date(leg.departure_at).toLocaleString("en-IE")}
+                          </time>
+                        </dd>
+                        <dt>Passengers</dt>
+                        <dd>{leg.passenger_count} passengers</dd>
+                      </div>
+                    ))}
+                    <div>
+                      <dt>Aircraft</dt>
+                      <dd className="operator-booking-card__aircraft">
+                        {booking.aircraft_manufacturer} {booking.aircraft_model}{" "}
+                        · {booking.aircraft_registration} ·{" "}
+                        {booking.aircraft_category}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Operator amount</dt>
+                      <dd className="operator-booking-card__amount">
+                        {money(booking.operator_amount_minor, booking.currency)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Requested</dt>
+                      <dd>
+                        <time dateTime={booking.created_at}>
+                          {new Date(booking.created_at).toLocaleString("en-IE")}
+                        </time>
+                      </dd>
+                    </div>
+                  </dl>
+                  {!activeOrganization?.canDecide ? (
+                    <p className="operator-booking-card__readonly">
+                      Read-only access
+                    </p>
+                  ) : !expanded ? (
                     <Button
-                      disabled={pending}
-                      onClick={() => void decide("confirm", booking.booking_id)}
+                      variant="secondary"
+                      onClick={() => setSelectedId(booking.booking_id)}
                     >
-                      Confirm booking
+                      Review decision
                     </Button>
-                    <fieldset className="operator-booking-card__rejection">
-                      <legend>Reject this booking</legend>
-                      <label>
-                        Rejection reason{" "}
-                        <select
-                          disabled={pending}
-                          value={reason}
-                          onChange={(event) =>
-                            setReason(
-                              event.target.value as BookingRejectionReason,
-                            )
-                          }
-                        >
-                          {REASONS.map((value) => (
-                            <option key={value} value={value}>
-                              {value.replaceAll("_", " ")}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                  ) : (
+                    <div className="operator-decision" aria-busy={pending}>
+                      <p>
+                        Confirming records the operator&apos;s decision. It does
+                        not capture payment or ticket the flight.
+                      </p>
                       <Button
-                        variant="secondary"
                         disabled={pending}
                         onClick={() =>
-                          void decide("reject", booking.booking_id)
+                          void decide("confirm", booking.booking_id)
                         }
                       >
-                        Reject booking
+                        Confirm booking
                       </Button>
-                    </fieldset>
-                    <Button
-                      variant="ghost"
-                      disabled={pending}
-                      onClick={() => setSelectedId(null)}
-                    >
-                      Back
-                    </Button>
-                  </div>
-                )}
-              </Card>
-            );
-          })}
-        </div>
-      )}
-    </Container>
+                      <fieldset className="operator-booking-card__rejection">
+                        <legend>Reject this booking</legend>
+                        <label>
+                          Rejection reason{" "}
+                          <select
+                            disabled={pending}
+                            value={reason}
+                            onChange={(event) =>
+                              setReason(
+                                event.target.value as BookingRejectionReason,
+                              )
+                            }
+                          >
+                            {REASONS.map((value) => (
+                              <option key={value} value={value}>
+                                {value.replaceAll("_", " ")}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <Button
+                          variant="secondary"
+                          disabled={pending}
+                          onClick={() =>
+                            void decide("reject", booking.booking_id)
+                          }
+                        >
+                          Reject booking
+                        </Button>
+                      </fieldset>
+                      <Button
+                        variant="ghost"
+                        disabled={pending}
+                        onClick={() => setSelectedId(null)}
+                      >
+                        Back
+                      </Button>
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </Container>
+    </div>
   );
 }
