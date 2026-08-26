@@ -140,8 +140,8 @@ function EligibleBookingCreatePanel({
     <section
       className={
         pending
-          ? "offer-confirmation offer-confirmation--pending"
-          : "offer-confirmation"
+          ? "offer-confirmation booking-create-panel offer-confirmation--pending"
+          : "offer-confirmation booking-create-panel"
       }
       aria-labelledby="booking-confirmation-title"
       aria-busy={pending}

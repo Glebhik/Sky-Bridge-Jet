@@ -279,7 +279,7 @@ test.describe("Phase 9.5.A real customer Booking journey", () => {
     for (const viewport of viewports) {
       await page.setViewportSize(viewport);
       await expectNoOverflow();
-      await expect(page.getByText(/SBJ-.*awaiting operator confirmation/)).toBeVisible();
+      await expect(page.getByText(/SBJ-.*Awaiting operator confirmation/)).toBeVisible();
       await expect(page.getByRole("link", { name: "View bookings" })).toBeVisible();
     }
     expect(bookingPosts).toHaveLength(1);
