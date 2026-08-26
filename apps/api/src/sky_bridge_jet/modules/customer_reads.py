@@ -13,7 +13,8 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import StringConstraints
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -40,6 +41,10 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 Limit = Annotated[int, Query(ge=1, le=100)]
 Offset = Annotated[int, Query(ge=0)]
 _DEFAULT_LIMIT = 20
+CanonicalBookingId = Annotated[
+    str,
+    StringConstraints(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+]
 
 
 class CustomerReadService:
@@ -73,18 +78,35 @@ class CustomerReadService:
             ).all()
         )
 
-    def list_payments(self, customer_id: UUID, *, limit: int, offset: int) -> list[Payment]:
-        return list(
-            self.session.scalars(
-                select(Payment)
-                .join(Booking, Payment.booking_id == Booking.id)
-                .join(TripRequest, Booking.trip_request_id == TripRequest.id)
-                .where(TripRequest.customer_id == customer_id)
-                .order_by(Payment.created_at.desc(), Payment.id)
-                .limit(limit)
-                .offset(offset)
-            ).all()
+    def list_payments(
+        self,
+        customer_id: UUID,
+        *,
+        limit: int,
+        offset: int,
+        booking_ids: tuple[UUID, ...] | None = None,
+    ) -> list[Payment]:
+        statement = (
+            select(Payment)
+            .join(Booking, Payment.booking_id == Booking.id)
+            .join(TripRequest, Booking.trip_request_id == TripRequest.id)
+            .where(TripRequest.customer_id == customer_id)
+            .order_by(Payment.created_at.desc(), Payment.id)
         )
+        if booking_ids is not None:
+            statement = statement.where(Payment.booking_id.in_(booking_ids))
+        else:
+            statement = statement.limit(limit).offset(offset)
+        return list(self.session.scalars(statement).all())
+
+
+def _booking_id_filter(raw_values: list[CanonicalBookingId] | None) -> tuple[UUID, ...] | None:
+    if raw_values is None:
+        return None
+    parsed: list[UUID] = []
+    for raw in raw_values:
+        parsed.append(UUID(raw))
+    return tuple(dict.fromkeys(parsed))
 
 
 @router.get(
@@ -127,12 +149,21 @@ def list_my_bookings(
     operation_id="listMyPayments",
 )
 def list_my_payments(
+    request: Request,
     principal: CurrentPrincipal,
     active_organization: ActiveOrganization,
     session: DatabaseSession,
+    booking_id: Annotated[list[CanonicalBookingId] | None, Query(max_length=100)] = None,
     limit: Limit = _DEFAULT_LIMIT,
     offset: Offset = 0,
 ) -> list[CustomerPaymentStatusView]:
     customer_id = access.active_customer_id(principal, active_organization)
-    payments = CustomerReadService(session).list_payments(customer_id, limit=limit, offset=offset)
+    booking_ids = _booking_id_filter(booking_id)
+    if booking_ids is not None and (
+        "limit" in request.query_params or "offset" in request.query_params
+    ):
+        raise HTTPException(status_code=422, detail="Filtered lookup does not accept pagination")
+    payments = CustomerReadService(session).list_payments(
+        customer_id, limit=limit, offset=offset, booking_ids=booking_ids
+    )
     return [customer_payment_view(payment) for payment in payments]
