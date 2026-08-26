@@ -13,6 +13,7 @@ const getAirport = vi.fn();
 const cancelTripRequest = vi.fn();
 const listTripRequestOffers = vi.fn();
 const selectOffer = vi.fn();
+const getTripRequestBooking = vi.fn();
 
 vi.mock("@/lib/api/client", () => ({
   portalApi: {
@@ -22,6 +23,7 @@ vi.mock("@/lib/api/client", () => ({
     cancelTripRequest: (...a: unknown[]) => cancelTripRequest(...a),
     listTripRequestOffers: (...a: unknown[]) => listTripRequestOffers(...a),
     selectOffer: (...a: unknown[]) => selectOffer(...a),
+    getTripRequestBooking: (...a: unknown[]) => getTripRequestBooking(...a),
   },
 }));
 
@@ -74,6 +76,10 @@ const TRIP: CustomerTripRequest = {
 };
 
 beforeEach(() => {
+  getTripRequestBooking.mockReset();
+  getTripRequestBooking.mockRejectedValue(
+    new ApiError(404, "not_found", "Not found", "client"),
+  );
   orgContext = { activeOrganizationId: "org-1", hasCustomerContext: true };
   params = { id: TRIP.id };
   listTripRequests.mockReset();

@@ -248,6 +248,50 @@ describe("portalApi — Phase 9.4.B customer offer selection", () => {
   });
 });
 
+describe("portalApi — Phase 9.5.A customer Booking", () => {
+  const TRIP_ID = "b32413c8-88e9-4c05-89e5-78afb14f5eb4";
+  const OFFER_ID = "11111111-2222-4333-8444-555555555555";
+
+  it("POSTs only trip_request_id and operator_offer_id with CSRF + org context", async () => {
+    document.cookie = "sbj_csrf=csrf-value";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse({ status: "PENDING_OPERATOR_CONFIRMATION" }, 201),
+      );
+    await portalApi.createBooking(
+      { trip_request_id: TRIP_ID, operator_offer_id: OFFER_ID },
+      "org-42",
+    );
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toBe("/api/proxy/bookings");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      trip_request_id: TRIP_ID,
+      operator_offer_id: OFFER_ID,
+    });
+    expect(String(init?.body)).not.toMatch(
+      /customer_id|operator_id|aircraft_id/,
+    );
+    expect((init?.headers as Headers).get("x-csrf-token")).toBe("csrf-value");
+    expect((init?.headers as Headers).get("x-organization-id")).toBe("org-42");
+    expect(init?.credentials).toBe("same-origin");
+    expect(init?.cache).toBe("no-store");
+  });
+
+  it("GETs the exact trip-scoped authoritative Booking without CSRF", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ id: "booking" }));
+    await portalApi.getTripRequestBooking(TRIP_ID, "org-42");
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toBe(`/api/proxy/trip-requests/${TRIP_ID}/booking`);
+    expect(init?.method ?? "GET").toBe("GET");
+    expect((init?.headers as Headers).get("x-csrf-token")).toBeNull();
+    expect((init?.headers as Headers).get("x-organization-id")).toBe("org-42");
+  });
+});
+
 describe("portalApi — Phase 9.3.B customer write journey", () => {
   const TRIP_ID = "b32413c8-88e9-4c05-89e5-78afb14f5eb4";
 

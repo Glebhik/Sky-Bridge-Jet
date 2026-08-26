@@ -84,7 +84,6 @@ describe("Phase 9.4.A offer reads — exact closed pattern", () => {
       ["trip-requests", "..", "offers"],
       ["trip-requests-extra", UUID, "offers"],
       ["offers"],
-      ["bookings"],
       ["payments"],
     ];
     for (const segments of rejected)
@@ -119,6 +118,54 @@ describe("Phase 9.4.B offer selection — exact closed pattern", () => {
       ["trip-requests", TRIP, "offers", OFFER],
     ])
       expect(validateProxyRequest(path, "POST")).toMatchObject({
+        ok: false,
+        status: 404,
+      });
+  });
+});
+
+describe("Phase 9.5.A Booking routes — minimum closed surface", () => {
+  const TRIP = "b32413c8-88e9-4c05-89e5-78afb14f5eb4";
+  const BOOKING = "11111111-2222-4333-8444-555555555555";
+
+  it("allows only POST on the exact Booking collection", () => {
+    expect(validateProxyRequest(["bookings"], "POST")).toMatchObject({
+      ok: true,
+      path: "bookings",
+    });
+    for (const method of ["GET", "PUT", "PATCH", "DELETE"])
+      expect(validateProxyRequest(["bookings"], method)).toMatchObject({
+        ok: false,
+        status: 405,
+      });
+  });
+
+  it("allows only GET on the exact trip-scoped Booking read", () => {
+    const path = ["trip-requests", TRIP, "booking"];
+    expect(validateProxyRequest(path, "GET")).toMatchObject({
+      ok: true,
+      path: path.join("/"),
+    });
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"])
+      expect(validateProxyRequest(path, method)).toMatchObject({
+        ok: false,
+        status: 405,
+      });
+  });
+
+  it("keeps detail, decisions, cancellation, and payment closed", () => {
+    for (const [path, method] of [
+      [["bookings", BOOKING], "GET"],
+      [["bookings", BOOKING, "confirm"], "POST"],
+      [["bookings", BOOKING, "reject"], "POST"],
+      [["bookings", BOOKING, "cancel"], "POST"],
+      [["bookings", BOOKING, "payment"], "POST"],
+      [["trip-requests", "not-a-uuid", "booking"], "GET"],
+      [["trip-requests", TRIP, "booking", "extra"], "GET"],
+      [["trip-requests", "..", "booking"], "GET"],
+      [["trip-requests", `${TRIP}%2fextra`, "booking"], "GET"],
+    ] as const)
+      expect(validateProxyRequest([...path], method)).toMatchObject({
         ok: false,
         status: 404,
       });
@@ -218,7 +265,7 @@ describe("Phase 9.3.A parameterized reads — closed pattern allow-list", () => 
   it("rejects extra segments and unexposed mutation sub-routes (no passthrough)", () => {
     // A trailing segment must not widen the {id} GET into a passthrough. `submit` (9.3.B) and
     // `cancel` (9.3.C) and offers (9.4.A GET-only) are covered separately; unknowns stay 404.
-    for (const extra of ["extra", "booking"]) {
+    for (const extra of ["extra"]) {
       expect(
         validateProxyRequest(["trip-requests", UUID, extra], "GET"),
       ).toMatchObject({ ok: false, status: 404 });
@@ -338,7 +385,13 @@ describe("Phase 9.3.B customer write routes — closed allow-list", () => {
     expect(
       validateProxyRequest(["trip-requests", UUID, "offers"], "GET"),
     ).toMatchObject({ ok: true });
-    for (const sub of ["booking", "quotes", "documents"]) {
+    expect(
+      validateProxyRequest(["trip-requests", UUID, "booking"], "GET"),
+    ).toMatchObject({ ok: true });
+    expect(
+      validateProxyRequest(["trip-requests", UUID, "booking"], "POST"),
+    ).toMatchObject({ ok: false, status: 405 });
+    for (const sub of ["quotes", "documents"]) {
       expect(
         validateProxyRequest(["trip-requests", UUID, sub], "POST"),
       ).toMatchObject({ ok: false, status: 404 });
@@ -433,11 +486,9 @@ describe("Phase 9.3.C cancel route — closed pattern allow-list", () => {
     expect(
       validateProxyRequest(["trip-requests", UUID, "offers"], "POST"),
     ).toMatchObject({ ok: false, status: 405 });
-    for (const sub of ["booking"]) {
-      expect(
-        validateProxyRequest(["trip-requests", UUID, sub], "POST"),
-      ).toMatchObject({ ok: false, status: 404 });
-    }
+    expect(
+      validateProxyRequest(["trip-requests", UUID, "booking"], "POST"),
+    ).toMatchObject({ ok: false, status: 405 });
     for (const extra of ["extra", "foo"]) {
       expect(
         validateProxyRequest(["trip-requests", UUID, "cancel", extra], "POST"),
