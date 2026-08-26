@@ -15,6 +15,9 @@ import type {
   RegistrationResponse,
   TripRequestCreateRequest,
   User,
+  OperatorBooking,
+  OperatorBookingDecisionResponse,
+  BookingRejectionReason,
 } from "@/lib/api/types";
 
 /**
@@ -304,4 +307,39 @@ export const portalApi = {
       organizationId,
       signal,
     }),
+  listOperatorBookings: (organizationId: string, signal?: AbortSignal) =>
+    apiRequest<readonly OperatorBooking[]>("me/operator-bookings", {
+      organizationId,
+      signal,
+    }),
+  confirmOperatorBooking: (
+    bookingId: string,
+    body: { readonly confirmation_reference?: string; readonly note?: string },
+    organizationId: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<OperatorBookingDecisionResponse>(
+      `bookings/${bookingId}/confirm`,
+      {
+        method: "POST",
+        body,
+        organizationId,
+        signal,
+      },
+    ),
+  rejectOperatorBooking: (
+    bookingId: string,
+    body: { readonly reason: BookingRejectionReason; readonly note?: string },
+    organizationId: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<OperatorBookingDecisionResponse>(
+      `bookings/${bookingId}/reject`,
+      {
+        method: "POST",
+        body,
+        organizationId,
+        signal,
+      },
+    ),
 };

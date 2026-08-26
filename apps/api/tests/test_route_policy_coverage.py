@@ -26,9 +26,9 @@ def test_verified_route_counts() -> None:
     # Phase 9.1.A added one route — the authenticated customer-account recovery endpoint
     # (83 → 84; 79 → 80 ops). Phase 9.2.A adds one public route — the enumeration-safe
     # verification-resend endpoint (84 → 85; 80 → 81 ops).
-    assert len(registered) == 85, sorted(registered)
+    assert len(registered) == 86, sorted(registered)
     openapi_ops = {r for r in registered if r[1] not in DOCUMENTATION_ROUTES}
-    assert len(openapi_ops) == 81
+    assert len(openapi_ops) == 82
 
 
 def test_every_route_has_exactly_one_disposition() -> None:

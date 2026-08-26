@@ -115,6 +115,50 @@ export interface BookingCreateRequest {
   readonly operator_offer_id: string;
 }
 
+export type OperatorBookingStatus =
+  | "PENDING_OPERATOR_CONFIRMATION"
+  | "CONFIRMED"
+  | "REJECTED"
+  | "CANCELLED";
+
+export interface OperatorBookingLeg {
+  readonly sequence: number;
+  readonly origin_airport_code: string;
+  readonly destination_airport_code: string;
+  readonly departure_at: string;
+  readonly passenger_count: number;
+}
+
+/** Minimal operator-safe queue item: deliberately no customer, fee, payment, or notes. */
+export interface OperatorBooking {
+  readonly booking_id: string;
+  readonly reference: string;
+  readonly status: OperatorBookingStatus;
+  readonly trip_request_id: string;
+  readonly operator_offer_id: string;
+  readonly currency: "EUR" | "GBP" | "USD";
+  readonly operator_amount_minor: number;
+  readonly operator_legal_name: string;
+  readonly aircraft_registration: string;
+  readonly aircraft_manufacturer: string;
+  readonly aircraft_model: string;
+  readonly aircraft_category: string;
+  readonly legs: readonly OperatorBookingLeg[];
+  readonly created_at: string;
+}
+
+export type BookingRejectionReason =
+  | "AIRCRAFT_UNAVAILABLE"
+  | "SCHEDULE_CONFLICT"
+  | "OPERATIONAL_RESTRICTION"
+  | "COMMERCIAL_WITHDRAWAL"
+  | "OTHER";
+
+export interface OperatorBookingDecisionResponse {
+  readonly id: string;
+  readonly status: OperatorBookingStatus;
+}
+
 /** One leg of a trip request (as returned by the customer trip-request read models). */
 export interface TripLeg {
   readonly id: string;

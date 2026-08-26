@@ -30,6 +30,63 @@ body {
   margin: 0;
 }
 
+.operator-main {
+  min-height: 100vh;
+}
+
+.operator-booking-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.operator-booking-card h2 {
+  font-size: 1.25rem;
+  margin-top: 0;
+}
+
+.operator-booking-card [aria-busy] {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.operator-booking-card [aria-busy] p {
+  flex-basis: 100%;
+}
+
+.operator-booking-card label {
+  display: grid;
+  font-weight: 600;
+  gap: 0.25rem;
+}
+
+.operator-booking-card__rejection {
+  align-items: end;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+}
+
+.operator-booking-card__rejection legend {
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  width: 100%;
+}
+
+.operator-booking-card select,
+.operator-main select {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font: inherit;
+  max-width: 100%;
+  min-height: 2.75rem;
+  padding: 0.5rem;
+}
+
 body {
   background: var(--paper);
   color: var(--ink);

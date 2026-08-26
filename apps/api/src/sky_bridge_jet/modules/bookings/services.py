@@ -21,6 +21,8 @@ from sky_bridge_jet.modules.bookings.schemas import (
     BookingConfirm,
     BookingCreate,
     BookingReject,
+    OperatorBookingLegView,
+    OperatorBookingView,
 )
 from sky_bridge_jet.modules.compliance.domain import ComplianceGateError
 from sky_bridge_jet.modules.compliance.evaluator import ComplianceEvaluator
@@ -127,7 +129,7 @@ class BookingService:
             booking = self.bookings.get_for_update(booking_id)
             if booking is None:
                 raise _not_found("Booking")
-            if booking.operator_id != data.operator_id:
+            if data.operator_id is not None and booking.operator_id != data.operator_id:
                 raise OperatorMismatchError("Operator does not match the booking")
             validate_booking_transition(booking.status, BookingStatus.CONFIRMED)
 
@@ -167,7 +169,7 @@ class BookingService:
             booking = self.bookings.get_for_update(booking_id)
             if booking is None:
                 raise _not_found("Booking")
-            if booking.operator_id != data.operator_id:
+            if data.operator_id is not None and booking.operator_id != data.operator_id:
                 raise OperatorMismatchError("Operator does not match the booking")
             validate_booking_transition(booking.status, BookingStatus.REJECTED)
 
@@ -216,3 +218,47 @@ class BookingService:
         if booking is None:
             raise _not_found("Booking")
         return booking
+
+    def list_pending_for_operator(
+        self, operator_id: UUID, *, limit: int, offset: int
+    ) -> list[OperatorBookingView]:
+        bookings = self.bookings.list_pending_for_operator(operator_id, limit=limit, offset=offset)
+        legs_by_trip: dict[UUID, list[OperatorBookingLegView]] = {
+            booking.trip_request_id: [] for booking in bookings
+        }
+        for (
+            trip_id,
+            sequence,
+            origin,
+            destination,
+            departure_at,
+            passenger_count,
+        ) in self.bookings.list_leg_rows(list(legs_by_trip)):
+            legs_by_trip[trip_id].append(
+                OperatorBookingLegView(
+                    sequence=sequence,
+                    origin_airport_code=origin,
+                    destination_airport_code=destination,
+                    departure_at=departure_at,
+                    passenger_count=passenger_count,
+                )
+            )
+        return [
+            OperatorBookingView(
+                booking_id=booking.id,
+                reference=booking.reference,
+                status=booking.status,
+                trip_request_id=booking.trip_request_id,
+                operator_offer_id=booking.operator_offer_id,
+                currency=booking.currency,
+                operator_amount_minor=booking.operator_amount_minor,
+                operator_legal_name=booking.operator_legal_name,
+                aircraft_registration=booking.aircraft_registration,
+                aircraft_manufacturer=booking.aircraft_manufacturer,
+                aircraft_model=booking.aircraft_model,
+                aircraft_category=booking.aircraft_category,
+                legs=legs_by_trip[booking.trip_request_id],
+                created_at=booking.created_at,
+            )
+            for booking in bookings
+        ]
