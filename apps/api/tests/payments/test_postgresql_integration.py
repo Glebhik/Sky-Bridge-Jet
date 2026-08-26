@@ -16,6 +16,7 @@ from sky_bridge_jet.modules.payments.domain import (
 )
 from sky_bridge_jet.modules.payments.models import Payment
 from sky_bridge_jet.modules.payments.schemas import (
+    CustomerPaymentInitiate,
     PaymentAuthorize,
     PaymentCapture,
     PaymentVoid,
@@ -144,6 +145,85 @@ def test_concurrent_payment_creation_yields_one(
     with SessionLocal() as session:
         count = len(session.query(Payment).filter(Payment.booking_id == booking_id).all())
     assert count == 1
+
+
+@pytest.mark.parametrize("same_key", [True, False])
+def test_concurrent_customer_initiation_authorizes_once(
+    client: TestClient, airports: list[dict[str, Any]], same_key: bool
+) -> None:
+    booking_id = UUID(booking_scenario(client, airports, confirm=False)["booking"]["id"])
+    first_key = new_key()
+    keys = [first_key, first_key if same_key else new_key()]
+    barrier = threading.Barrier(2)
+    outcomes: list[str] = []
+    lock = threading.Lock()
+
+    def attempt(key: str) -> None:
+        barrier.wait()
+        try:
+            with SessionLocal() as session:
+                payment = PaymentService(session).initiate_for_customer(
+                    booking_id, CustomerPaymentInitiate(idempotency_key=key)
+                )
+                result = payment.status.value
+        except PaymentConflictError:
+            result = "conflict"
+        with lock:
+            outcomes.append(result)
+
+    threads = [threading.Thread(target=attempt, args=(key,)) for key in keys]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    # The Booking lock serializes both callers. The winner authorizes; the waiter
+    # refreshes the now-AUTHORIZED row and a genuinely unused fresh key receives the
+    # canonical authoritative no-op. Both paths still persist one AUTHORIZE operation.
+    assert sorted(outcomes) == ["AUTHORIZED", "AUTHORIZED"]
+    with SessionLocal() as session:
+        payments = session.query(Payment).filter(Payment.booking_id == booking_id).all()
+        assert len(payments) == 1
+        assert payments[0].status is PaymentStatus.AUTHORIZED
+        assert len(payments[0].operations) == 1
+
+
+def test_concurrent_customer_initiation_rejects_cross_booking_global_key_collision(
+    client: TestClient, airports: list[dict[str, Any]]
+) -> None:
+    booking_ids = [
+        UUID(booking_scenario(client, airports, confirm=False)["booking"]["id"]) for _ in range(2)
+    ]
+    idempotency_key = new_key()
+    barrier = threading.Barrier(2)
+    outcomes: list[str] = []
+    lock = threading.Lock()
+
+    def attempt(booking_id: UUID) -> None:
+        barrier.wait()
+        try:
+            with SessionLocal() as session:
+                payment = PaymentService(session).initiate_for_customer(
+                    booking_id, CustomerPaymentInitiate(idempotency_key=idempotency_key)
+                )
+                result = payment.status.value
+        except PaymentConflictError:
+            result = "conflict"
+        with lock:
+            outcomes.append(result)
+
+    threads = [threading.Thread(target=attempt, args=(booking_id,)) for booking_id in booking_ids]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert sorted(outcomes) == ["AUTHORIZED", "conflict"]
+    with SessionLocal() as session:
+        payments = session.query(Payment).filter(Payment.booking_id.in_(booking_ids)).all()
+        assert len(payments) == 1
+        assert payments[0].status is PaymentStatus.AUTHORIZED
+        assert len(payments[0].operations) == 1
 
 
 def test_concurrent_capture_captures_once(

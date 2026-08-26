@@ -44,6 +44,8 @@ class Disposition(StrEnum):
     # is schema-only and adds no route, so those keep their authorization-phase
     # disposition (their notes record the 9.1.A typed contract).
     PHASE_9_1A_BOUND = "PHASE_9_1A_BOUND"
+    # Customer-owned payment initiation boundary (Phase 9.6.B0).
+    PHASE_9_6B0_BOUND = "PHASE_9_6B0_BOUND"
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,7 @@ _P2 = Disposition.PHASE_9_0A_2_BOUND
 _P3 = Disposition.PHASE_9_0A_3_BOUND
 _P0B = Disposition.PHASE_9_0B_BOUND
 _P1A = Disposition.PHASE_9_1A_BOUND
+_P96B0 = Disposition.PHASE_9_6B0_BOUND
 
 ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
     # ---- Platform / documentation / discovery (public) --------------------
@@ -241,6 +244,13 @@ ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
         _P3,
         "platform (payment.operate)",
         "B3/D internal/trusted; not customer/operator",
+    ),
+    _p(
+        "POST",
+        "/api/v1/bookings/{booking_id}/payment/initiate",
+        _P96B0,
+        "customer (payment.initiate; own booking)",
+        "server-derived amount/currency/provider; customer-safe response",
     ),
     _p(
         "GET",

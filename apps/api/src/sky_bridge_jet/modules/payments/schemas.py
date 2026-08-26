@@ -30,6 +30,33 @@ class PaymentAuthorize(ApiModel):
     payment_method_reference: PaymentMethodReference | None = None
 
 
+class CustomerPaymentInitiate(ApiModel):
+    """Customer command authority: an opaque retry key, and nothing commercial."""
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    idempotency_key: IdempotencyKey
+
+
+class CustomerPaymentInitiateResponse(ApiModel):
+    """Exact customer-safe result of initiating authorization for an owned booking."""
+
+    id: UUID
+    booking_id: UUID
+    status: PaymentStatus
+    currency: str
+    total_amount_minor: int
+    authorized_amount_minor: int | None
+    captured_amount_minor: int
+    refunded_amount_minor: int
+    requires_customer_action: bool
+    authorized_at: datetime | None
+    captured_at: datetime | None
+    cancelled_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class PaymentCapture(ApiModel):
     idempotency_key: IdempotencyKey
 
