@@ -6,6 +6,7 @@ import type {
   CustomerBooking,
   CustomerOffer,
   CustomerPayment,
+  CustomerPaymentInitiateRequest,
   CustomerTripRequest,
   LoginResponse,
   MeResponse,
@@ -35,7 +36,7 @@ const PROXY_BASE = "/api/proxy";
 const CSRF_COOKIE = "sbj_csrf";
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-type Query = Record<string, string | number | undefined>;
+type Query = Record<string, string | number | readonly string[] | undefined>;
 
 interface RequestOptions {
   readonly method?: string;
@@ -59,7 +60,11 @@ function buildPath(path: string, query?: Query): string {
   const url = new URL(`${PROXY_BASE}/${path}`, "http://portal.local");
   if (query) {
     for (const [key, value] of Object.entries(query)) {
-      if (value !== undefined) url.searchParams.set(key, String(value));
+      if (Array.isArray(value)) {
+        for (const item of value) url.searchParams.append(key, item);
+      } else if (value !== undefined) {
+        url.searchParams.set(key, String(value));
+      }
     }
   }
   return `${url.pathname}${url.search}`;
@@ -302,8 +307,25 @@ export const portalApi = {
       organizationId,
       signal,
     }),
-  listPayments: (organizationId?: string, signal?: AbortSignal) =>
+  listPayments: (
+    bookingIds: readonly string[],
+    organizationId?: string,
+    signal?: AbortSignal,
+  ) =>
     apiRequest<readonly CustomerPayment[]>("me/payments", {
+      query: { booking_id: bookingIds },
+      organizationId,
+      signal,
+    }),
+  initiatePayment: (
+    bookingId: string,
+    body: CustomerPaymentInitiateRequest,
+    organizationId: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<CustomerPayment>(`bookings/${bookingId}/payment/initiate`, {
+      method: "POST",
+      body,
       organizationId,
       signal,
     }),

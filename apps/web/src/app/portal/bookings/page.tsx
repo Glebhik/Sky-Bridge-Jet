@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 
 import { useActiveOrganization } from "@/components/session/org-context";
 import { portalApi } from "@/lib/api/client";
@@ -8,6 +8,8 @@ import { bookingStatusLabel, bookingStatusTone } from "@/lib/portal/bookings";
 import { formatOfferMoney } from "@/lib/portal/offers";
 import { formatDateTime } from "@/lib/portal/trip-requests";
 import { useBookingFreshness } from "@/lib/portal/use-booking-freshness";
+import { useCustomerPayments } from "@/lib/portal/use-customer-payments";
+import { BookingPaymentSection } from "@/app/portal/bookings/payment-section";
 import {
   Alert,
   Badge,
@@ -39,11 +41,29 @@ export default function PortalBookingsPage() {
       portalApi.listBookings(activeOrganizationId ?? undefined, signal),
     [activeOrganizationId],
   );
-  const { state, refresh } = useBookingFreshness(
+  const { state, refresh: refreshBookings } = useBookingFreshness(
     load,
     `bookings:${activeOrganizationId ?? "none"}`,
     hasCustomerContext,
   );
+  const bookingIdKey =
+    state.status === "ready"
+      ? state.data.map((booking) => booking.id).join(",")
+      : "";
+  const bookingIds = useMemo(
+    () => (bookingIdKey ? bookingIdKey.split(",") : []),
+    [bookingIdKey],
+  );
+  const payments = useCustomerPayments(
+    bookingIds,
+    activeOrganizationId,
+    hasCustomerContext && state.status === "ready" && bookingIds.length > 0,
+  );
+
+  const refreshAll = useCallback(async () => {
+    await refreshBookings();
+    await payments.refresh();
+  }, [payments, refreshBookings]);
 
   return (
     <div className="bookings-landing">
@@ -75,7 +95,7 @@ export default function PortalBookingsPage() {
               variant="ghost"
               type="button"
               disabled={state.refreshing}
-              onClick={() => void refresh()}
+              onClick={() => void refreshAll()}
             >
               {state.refreshing ? "Refreshing…" : "Refresh status"}
             </Button>
@@ -156,6 +176,20 @@ export default function PortalBookingsPage() {
                         </div>
                       ) : null}
                     </dl>
+                    <BookingPaymentSection
+                      booking={booking}
+                      discovery={payments.state.status}
+                      payment={
+                        payments.state.status === "ready"
+                          ? payments.state.byBooking[booking.id]
+                          : undefined
+                      }
+                      pending={payments.pendingBookingId === booking.id}
+                      message={payments.messages[booking.id]}
+                      onAuthorize={() => payments.authorize(booking.id)}
+                      onRetrySame={() => payments.authorize(booking.id, true)}
+                      onRefresh={payments.refresh}
+                    />
                   </Card>
                 </li>
               );

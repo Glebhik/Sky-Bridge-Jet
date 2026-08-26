@@ -243,7 +243,20 @@ export interface CustomerPayment {
   readonly status: string;
   readonly currency: string;
   readonly total_amount_minor: number;
+  readonly authorized_amount_minor: number | null;
+  readonly captured_amount_minor: number;
+  readonly refunded_amount_minor: number;
+  readonly requires_customer_action: boolean;
+  readonly authorized_at: string | null;
+  readonly captured_at: string | null;
+  readonly cancelled_at: string | null;
   readonly created_at: string;
+  readonly updated_at: string;
+}
+
+/** The only customer-supplied field accepted by the B0 authorization boundary. */
+export interface CustomerPaymentInitiateRequest {
+  readonly idempotency_key: string;
 }
 
 /**

@@ -100,6 +100,10 @@ export const PROXY_PATTERN_ALLOWLIST: readonly ProxyPattern[] = [
   { segments: ["airports", ":uuid"], methods: ["GET"] },
   { segments: ["bookings", ":uuid", "confirm"], methods: ["POST"] },
   { segments: ["bookings", ":uuid", "reject"], methods: ["POST"] },
+  {
+    segments: ["bookings", ":uuid", "payment", "initiate"],
+    methods: ["POST"],
+  },
 ];
 
 /**

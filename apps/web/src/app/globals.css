@@ -2275,6 +2275,57 @@ a.resource-list__reference:hover {
   word-break: break-word;
 }
 
+.portal .booking-payment {
+  border-top: 1px solid var(--p-line-soft);
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 1.15rem;
+  min-width: 0;
+  padding-top: 1rem;
+}
+
+.portal .booking-payment h3,
+.portal .booking-payment h4,
+.portal .booking-payment p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.portal .booking-payment h3 {
+  color: var(--p-ivory);
+  font-family: var(--p-display);
+  font-size: 1.05rem;
+}
+
+.portal .booking-payment__confirmation {
+  background: rgba(197, 163, 101, 0.07);
+  border: 1px solid var(--p-line);
+  border-radius: 0.7rem;
+  display: grid;
+  gap: 0.8rem;
+  min-width: 0;
+  padding: 1rem;
+}
+
+.portal .booking-payment__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.portal .booking-payment .button {
+  max-width: 100%;
+  min-height: 2.75rem;
+  white-space: normal;
+}
+
+@media (max-width: 390px) {
+  .portal .booking-payment__actions .button {
+    width: 100%;
+  }
+}
+
 .portal .booking-card__total {
   color: var(--p-ivory);
   font-family: var(--p-display);
