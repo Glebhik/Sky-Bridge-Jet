@@ -14,6 +14,7 @@ import type { CustomerOffer } from "@/lib/api/types";
 const listTripRequestOffers = vi.fn();
 const selectOffer = vi.fn();
 const getTripRequestBooking = vi.fn();
+const createBooking = vi.fn();
 vi.mock("@/lib/api/client", () => ({
   portalApi: {
     listTripRequestOffers: (...args: unknown[]) =>
@@ -21,6 +22,7 @@ vi.mock("@/lib/api/client", () => ({
     selectOffer: (...args: unknown[]) => selectOffer(...args),
     getTripRequestBooking: (...args: unknown[]) =>
       getTripRequestBooking(...args),
+    createBooking: (...args: unknown[]) => createBooking(...args),
   },
 }));
 
@@ -54,6 +56,7 @@ beforeEach(() => {
   listTripRequestOffers.mockReset();
   selectOffer.mockReset();
   getTripRequestBooking.mockReset();
+  createBooking.mockReset();
   getTripRequestBooking.mockRejectedValue(
     new ApiError(404, "not_found", "Not found", "client"),
   );
@@ -132,7 +135,15 @@ describe("OffersSection", () => {
     expect(screen.getAllByText(/A very long factual/)).toHaveLength(3);
     expect(screen.getAllByRole("article")).toHaveLength(3);
     expect(screen.queryByRole("button", { name: /select/i })).toBeNull();
-    expect(screen.getByText("Checking booking status…")).toBeTruthy();
+    expect(
+      await screen.findByRole("button", { name: "Create booking request" }),
+    ).toBeTruthy();
+    expect(getTripRequestBooking).toHaveBeenCalledWith(
+      "trip",
+      "org",
+      expect.any(AbortSignal),
+    );
+    expect(createBooking).not.toHaveBeenCalled();
     expect(screen.queryByText(/recommended|capacity|cabin/i)).toBeNull();
   });
   it("isolates offer errors inside the section", async () => {
