@@ -229,13 +229,13 @@ describe("PortalTripRequestDetailPage", () => {
     expect(screen.getByText("Window seat please")).toBeTruthy();
     // A SUBMITTED request is cancellable → the Cancel action is present…
     expect(screen.getByRole("button", { name: "Cancel request" })).toBeTruthy();
-    // …but no other mutation controls (no submit/edit/book/pay/offer/select).
+    // …but no other mutation controls (no submit/edit/withdraw/book/pay/select).
     for (const name of [
       /submit/i,
       /edit/i,
+      /withdraw/i,
       /book/i,
       /pay/i,
-      /offer/i,
       /select/i,
     ]) {
       expect(screen.queryByRole("button", { name })).toBeNull();
