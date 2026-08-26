@@ -54,11 +54,9 @@ function OfferCard({
 }) {
   const availability = offerAvailability(offer.status);
   const tone =
-    availability === "selected"
-      ? "success"
-      : availability === "available"
-        ? "info"
-        : "neutral";
+    availability === "available" || availability === "selected"
+      ? "info"
+      : "neutral";
   const status =
     availability === "selected"
       ? "Selected"
@@ -71,29 +69,33 @@ function OfferCard({
     <li className={`offer-card offer-card--${availability}`}>
       <article aria-label={`${offer.operator_legal_name} offer`}>
         <div className="offer-card__heading">
-          <div>
+          <div className="offer-card__amount">
+            <p className="offer-card__currency">{offer.currency}</p>
             <p className="offer-card__price">
               {formatOfferMoney(offer.total_amount_minor, offer.currency)}
             </p>
-            <p className="offer-card__currency">{offer.currency}</p>
           </div>
-          <Badge tone={tone}>{status}</Badge>
+          <div className="offer-card__status">
+            <span
+              className={`offer-card__mark offer-card__mark--${availability}`}
+              aria-hidden="true"
+            />
+            <Badge tone={tone}>{status}</Badge>
+          </div>
         </div>
         <dl className="detail-list offer-card__details">
           <div>
             <dt>Operator</dt>
-            <dd>{offer.operator_legal_name}</dd>
-          </div>
-          <div>
-            <dt>Aircraft</dt>
-            <dd>
-              {offer.aircraft_manufacturer} {offer.aircraft_model} ·{" "}
-              {offer.aircraft_category} · {offer.aircraft_registration}
+            <dd className="offer-card__operator">
+              {offer.operator_legal_name}
             </dd>
           </div>
           <div>
-            <dt>Tax included</dt>
-            <dd>{formatOfferMoney(offer.tax_amount_minor, offer.currency)}</dd>
+            <dt>Aircraft</dt>
+            <dd className="offer-card__aircraft">
+              {offer.aircraft_manufacturer} {offer.aircraft_model} ·{" "}
+              {offer.aircraft_category} · {offer.aircraft_registration}
+            </dd>
           </div>
           <div>
             <dt>Validity</dt>
@@ -106,6 +108,12 @@ function OfferCard({
               ) : (
                 "Not specified"
               )}
+            </dd>
+          </div>
+          <div>
+            <dt>Tax included</dt>
+            <dd className="offer-card__tax">
+              {formatOfferMoney(offer.tax_amount_minor, offer.currency)}
             </dd>
           </div>
         </dl>
@@ -186,7 +194,9 @@ export function OffersSection({
   };
   return (
     <Card className="offers-section">
-      <h2 className="card__title">Offers</h2>
+      <div className="offers-section__head">
+        <h2 className="card__title">Offers</h2>
+      </div>
       {state.status === "loading" ? (
         <LoadingState label="Loading published offers…" />
       ) : null}
@@ -198,11 +208,7 @@ export function OffersSection({
       ) : null}
       {state.status === "ready" && selectionError !== "conflict" ? (
         <div className="offers-section__refresh">
-          <Button
-            variant="secondary"
-            disabled={refreshing}
-            onClick={refreshOffers}
-          >
+          <Button variant="ghost" disabled={refreshing} onClick={refreshOffers}>
             {refreshing ? "Refreshing…" : "Refresh offers"}
           </Button>
         </div>
@@ -234,7 +240,11 @@ export function OffersSection({
       ) : null}
       {confirmingOffer ? (
         <section
-          className="offer-confirmation"
+          className={
+            pending
+              ? "offer-confirmation offer-confirmation--pending"
+              : "offer-confirmation"
+          }
           aria-labelledby="offer-confirmation-title"
           aria-busy={pending}
         >

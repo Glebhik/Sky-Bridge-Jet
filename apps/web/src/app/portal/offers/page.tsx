@@ -47,7 +47,7 @@ export default function PortalOffersPage() {
   );
 
   return (
-    <>
+    <div className="offers-landing">
       <PageHeading
         title="Offers"
         description="Published offers are available within each trip request."
@@ -100,7 +100,7 @@ export default function PortalOffersPage() {
                 </p>
                 <p className="resource-list__actions">
                   <Link
-                    className="sbj-link"
+                    className="button button--secondary"
                     href={`/portal/trip-requests/${trip.id}`}
                   >
                     View offers
@@ -111,6 +111,6 @@ export default function PortalOffersPage() {
           ))}
         </ul>
       )}
-    </>
+    </div>
   );
 }
