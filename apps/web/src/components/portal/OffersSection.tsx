@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 
 import { portalApi } from "@/lib/api/client";
 import type { CustomerOffer } from "@/lib/api/types";
-import { useApiResource } from "@/lib/api/use-resource";
+import { useOfferFreshness } from "@/lib/portal/use-offer-freshness";
 import {
   canSelectCustomerOffer,
   compareCustomerOffers,
@@ -134,9 +134,6 @@ export function OffersSection({
   tripStatus,
   organizationId,
 }: Props) {
-  const [refreshNonce, setRefreshNonce] = useState(0);
-  const [selectedResponse, setSelectedResponse] =
-    useState<CustomerOffer | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [selectionError, setSelectionError] = useState<
@@ -148,16 +145,10 @@ export function OffersSection({
       portalApi.listTripRequestOffers(tripRequestId, organizationId, signal),
     [tripRequestId, organizationId],
   );
-  const state = useApiResource<readonly CustomerOffer[]>(
-    load,
-    `offers:${tripRequestId}:${organizationId ?? "none"}:${refreshNonce}`,
-  );
-  const offers =
-    state.status === "ready"
-      ? state.data.map((offer) =>
-          selectedResponse?.id === offer.id ? selectedResponse : offer,
-        )
-      : [];
+  const resourceKey = `offers:${tripRequestId}:${organizationId ?? "none"}`;
+  const { state, refreshing, refreshFailed, refresh, replaceData } =
+    useOfferFreshness(load, resourceKey, tripStatus);
+  const offers = state.status === "ready" ? state.data : [];
   const confirmingOffer = offers.find((offer) => offer.id === confirmingId);
 
   const selectConfirmedOffer = async () => {
@@ -172,7 +163,9 @@ export function OffersSection({
         confirmingOffer.id,
         organizationId,
       );
-      setSelectedResponse(selected);
+      replaceData(
+        offers.map((offer) => (offer.id === selected.id ? selected : offer)),
+      );
       setConfirmingId(null);
     } catch (error) {
       setSelectionError(
@@ -189,8 +182,7 @@ export function OffersSection({
   const refreshOffers = () => {
     setSelectionError(null);
     setConfirmingId(null);
-    setSelectedResponse(null);
-    setRefreshNonce((value) => value + 1);
+    void refresh();
   };
   return (
     <Card className="offers-section">
@@ -202,6 +194,22 @@ export function OffersSection({
         <Alert tone="error" title="Offers couldn’t be loaded">
           Your trip request is still available above. Refresh to try loading
           offers again.
+        </Alert>
+      ) : null}
+      {state.status === "ready" && selectionError !== "conflict" ? (
+        <div className="offers-section__refresh">
+          <Button
+            variant="secondary"
+            disabled={refreshing}
+            onClick={refreshOffers}
+          >
+            {refreshing ? "Refreshing…" : "Refresh offers"}
+          </Button>
+        </div>
+      ) : null}
+      {refreshFailed ? (
+        <Alert tone="warning" title="Offers couldn’t be refreshed">
+          Couldn’t refresh offers. Showing the last known information.
         </Alert>
       ) : null}
       {state.status === "ready" && state.data.length === 0 ? (

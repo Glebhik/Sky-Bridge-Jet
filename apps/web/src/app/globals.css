@@ -494,6 +494,11 @@ a.resource-list__reference:hover {
   gap: 0.75rem;
   margin-top: 1rem;
 }
+.offers-section__refresh {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 1rem;
+}
 .offer-confirmation {
   margin-top: 1rem;
   padding: 1rem;
