@@ -7,7 +7,10 @@ import { Alert, Button, LoadingState } from "@/components/ui/primitives";
 import { portalApi } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import type { CustomerBooking, CustomerOffer } from "@/lib/api/types";
-import { canCreateBookingRequest } from "@/lib/portal/bookings";
+import {
+  bookingStatusLabel,
+  canCreateBookingRequest,
+} from "@/lib/portal/bookings";
 
 interface Props {
   readonly tripRequestId: string;
@@ -117,7 +120,10 @@ function EligibleBookingCreatePanel({
   if (readState.status === "found")
     return (
       <Alert tone="info" title="Booking request created">
-        <p>{readState.booking.reference} is awaiting operator confirmation.</p>
+        <p>
+          {readState.booking.reference}:{" "}
+          {bookingStatusLabel(readState.booking.status)}.
+        </p>
         <Link className="card__link" href="/portal/bookings">
           View bookings
         </Link>

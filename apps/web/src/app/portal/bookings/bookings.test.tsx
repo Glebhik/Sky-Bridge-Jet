@@ -1,17 +1,19 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import PortalBookingsPage from "@/app/portal/bookings/page";
 import type { CustomerBooking } from "@/lib/api/types";
 
 const listBookings = vi.fn();
+let activeOrganizationId: string | null;
+let hasCustomerContext: boolean;
 vi.mock("@/lib/api/client", () => ({
   portalApi: { listBookings: (...args: unknown[]) => listBookings(...args) },
 }));
 vi.mock("@/components/session/org-context", () => ({
   useActiveOrganization: () => ({
-    activeOrganizationId: "org",
-    hasCustomerContext: true,
+    activeOrganizationId,
+    hasCustomerContext,
   }),
 }));
 
@@ -37,7 +39,11 @@ const makeBooking = (status: CustomerBooking["status"]): CustomerBooking => ({
   updated_at: "2026-08-26T10:00:00Z",
 });
 
-beforeEach(() => listBookings.mockReset());
+beforeEach(() => {
+  listBookings.mockReset();
+  activeOrganizationId = "org";
+  hasCustomerContext = true;
+});
 
 describe("customer Bookings page", () => {
   it("renders loading then empty state", async () => {
@@ -54,6 +60,44 @@ describe("customer Bookings page", () => {
       await screen.findByText("We couldn’t load your bookings"),
     ).toBeTruthy();
     expect(screen.queryByText("raw backend secret")).toBeNull();
+  });
+
+  it("does not read without an active customer context", () => {
+    activeOrganizationId = null;
+    hasCustomerContext = false;
+    render(<PortalBookingsPage />);
+    expect(screen.getByText("No active customer account")).toBeTruthy();
+    expect(listBookings).not.toHaveBeenCalled();
+  });
+
+  it("retains the list, keeps one stable safe warning, and recovers manually", async () => {
+    const pending = makeBooking("PENDING_OPERATOR_CONFIRMATION");
+    listBookings
+      .mockResolvedValueOnce([pending])
+      .mockRejectedValueOnce(new Error("raw backend secret"))
+      .mockRejectedValueOnce(new Error("raw backend secret"))
+      .mockResolvedValueOnce([makeBooking("CONFIRMED")]);
+    render(<PortalBookingsPage />);
+    expect(await screen.findByText(pending.reference)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh status" }));
+    const warning = await screen.findByText(
+      "Booking status could not be refreshed.",
+    );
+    expect(screen.getByText(pending.reference)).toBeTruthy();
+    expect(screen.queryByText("raw backend secret")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh status" }));
+    await waitFor(() => expect(listBookings).toHaveBeenCalledTimes(3));
+    expect(screen.getByText("Booking status could not be refreshed.")).toBe(
+      warning,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh status" }));
+    expect(await screen.findByText("Confirmed by the operator")).toBeTruthy();
+    expect(
+      screen.queryByText("Booking status could not be refreshed."),
+    ).toBeNull();
   });
 
   it("renders every authoritative state and factual customer-safe fields", async () => {
