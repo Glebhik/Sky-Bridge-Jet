@@ -97,6 +97,13 @@ ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
     _p("POST", "/api/v1/webhooks/stripe", _PUB, "provider", "signature-authenticated"),
     # ---- Authenticated self / Phase 8 bound -------------------------------
     _p("GET", "/api/v1/auth/me", _AB, "self"),
+    _p(
+        "GET",
+        "/api/v1/me/operator-compliance-readiness",
+        _AB,
+        "operator",
+        "Phase 9.7.C0 active-operator-safe compliance readiness",
+    ),
     _p("GET", "/api/v1/me/operator-bookings", _AB, "operator", "Phase 9.5.B pending queue"),
     _p(
         "GET",
