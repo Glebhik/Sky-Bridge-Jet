@@ -243,6 +243,38 @@ describe("portalApi — Phase 9.5.B operator decisions", () => {
   });
 });
 
+describe("portalApi — Phase 9.7.B operator Booking reads", () => {
+  const BOOKING = "11111111-2222-4333-8444-555555555555";
+
+  it("uses exact same-origin no-store abortable history/detail contracts", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() => Promise.resolve(jsonResponse([])));
+    const controller = new AbortController();
+    await portalApi.listOperatorBookingHistory(
+      "org-97b",
+      { limit: 10, offset: 20, status: "CONFIRMED" },
+      controller.signal,
+    );
+    await portalApi.getOperatorBooking(BOOKING, "org-97b", controller.signal);
+    expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/proxy/me/operator-bookings/history?limit=10&offset=20&status=CONFIRMED",
+      `/api/proxy/me/operator-bookings/${BOOKING}`,
+    ]);
+    for (const [, init] of fetchSpy.mock.calls) {
+      expect(init?.method ?? "GET").toBe("GET");
+      expect(init?.credentials).toBe("same-origin");
+      expect(init?.cache).toBe("no-store");
+      expect(init?.signal).toBe(controller.signal);
+      expect((init?.headers as Headers).get("x-organization-id")).toBe(
+        "org-97b",
+      );
+      expect((init?.headers as Headers).get("authorization")).toBeNull();
+      expect(String(init?.body ?? "")).not.toContain("operator_id");
+    }
+  });
+});
+
 describe("portalApi — Phase 9.7.A operator Offer contracts", () => {
   const OFFER = "11111111-2222-4333-8444-555555555555";
   it("uses exact paths, active org, CSRF writes and no operator_id", async () => {

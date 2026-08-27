@@ -2750,6 +2750,87 @@ a.resource-list__reference:hover {
   text-transform: uppercase;
 }
 
+.operator-history__links,
+.operator-history__toolbar,
+.operator-history__pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-block: 1rem;
+}
+
+.operator-history__toolbar {
+  justify-content: space-between;
+}
+
+.operator-history__toolbar select {
+  min-height: 2.75rem;
+  margin-inline-start: 0.5rem;
+}
+
+.operator-history__list {
+  display: grid;
+  gap: 1rem;
+}
+
+.operator-history__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.operator-history__head h2 {
+  overflow-wrap: anywhere;
+}
+
+.operator-history__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 0.85rem;
+  margin-block: 1rem;
+}
+
+.operator-history__facts > div {
+  min-width: 0;
+}
+
+.operator-history__facts dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.operator-history__facts dd {
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.operator-history__leg {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.75rem;
+}
+
+.operator-history__pagination {
+  justify-content: center;
+}
+
+@media (max-width: 30rem) {
+  .operator-history__toolbar,
+  .operator-history__toolbar label,
+  .operator-history__toolbar select {
+    width: 100%;
+  }
+
+  .operator-history__toolbar select {
+    margin: 0.35rem 0 0;
+  }
+}
+
 .operator-market,
 .operator-opportunity__legs,
 .operator-own-offers,

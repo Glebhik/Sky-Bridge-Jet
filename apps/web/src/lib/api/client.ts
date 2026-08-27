@@ -25,6 +25,8 @@ import type {
   OperatorOfferCommand,
   OperatorOfferCreate,
   OperatorOpportunity,
+  OperatorBookingReadView,
+  OperatorBookingStatus,
 } from "@/lib/api/types";
 
 /**
@@ -340,6 +342,28 @@ export const portalApi = {
     ),
   listOperatorBookings: (organizationId: string, signal?: AbortSignal) =>
     apiRequest<readonly OperatorBooking[]>("me/operator-bookings", {
+      organizationId,
+      signal,
+    }),
+  listOperatorBookingHistory: (
+    organizationId: string,
+    query: {
+      readonly limit: number;
+      readonly offset: number;
+      readonly status?: OperatorBookingStatus;
+    },
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<readonly OperatorBookingReadView[]>(
+      "me/operator-bookings/history",
+      { organizationId, query, signal },
+    ),
+  getOperatorBooking: (
+    bookingId: string,
+    organizationId: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<OperatorBookingReadView>(`me/operator-bookings/${bookingId}`, {
       organizationId,
       signal,
     }),

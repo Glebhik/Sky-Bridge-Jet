@@ -52,6 +52,7 @@ export default async function OperatorLayout({
       <nav className="operator-nav" aria-label="Operator workspace">
         <Link href="/operator/opportunities">Opportunities</Link>
         <Link href="/operator/bookings">Bookings</Link>
+        <Link href="/operator/bookings/history">History</Link>
       </nav>
       {children}
     </main>

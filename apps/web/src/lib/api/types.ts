@@ -147,6 +147,29 @@ export interface OperatorBooking {
   readonly created_at: string;
 }
 
+/** B0 history/detail projection. Deliberately excludes customer and payment data. */
+export interface OperatorBookingReadView {
+  readonly id: string;
+  readonly reference: string;
+  readonly status: OperatorBookingStatus;
+  readonly trip_request_id: string;
+  readonly operator_offer_id: string;
+  readonly aircraft_id: string;
+  readonly currency: "EUR" | "GBP" | "USD";
+  readonly operator_amount_minor: number;
+  readonly operator_legal_name: string;
+  readonly aircraft_registration: string;
+  readonly aircraft_manufacturer: string;
+  readonly aircraft_model: string;
+  readonly aircraft_category: string;
+  readonly legs: readonly OperatorBookingLeg[];
+  readonly confirmed_at: string | null;
+  readonly rejected_at: string | null;
+  readonly cancelled_at: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
 export type BookingRejectionReason =
   | "AIRCRAFT_UNAVAILABLE"
   | "SCHEDULE_CONFLICT"
