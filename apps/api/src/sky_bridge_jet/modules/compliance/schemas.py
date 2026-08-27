@@ -193,6 +193,16 @@ class OperatorEligibilityResponse(ApiModel):
     reasons: list[EligibilityReasonCode]
 
 
+class OperatorComplianceReadinessResponse(ApiModel):
+    """Operator-safe readiness for the authenticated active organization."""
+
+    admission_status: OperatorAdmissionStatus | None
+    marketplace_eligible: bool
+    blockers: list[EligibilityReasonCode]
+    created_at: datetime | None
+    updated_at: datetime | None
+
+
 class OperatorAircraftEligibilityResponse(ApiModel):
     operator_id: UUID
     aircraft_id: UUID

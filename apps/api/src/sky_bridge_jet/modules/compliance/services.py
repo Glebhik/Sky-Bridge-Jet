@@ -425,6 +425,16 @@ class ComplianceService:
             raise _not_found("Operator")
         return ComplianceEvaluator(self.session).evaluate_operator(operator_id)
 
+    def operator_readiness(
+        self, operator_id: UUID
+    ) -> tuple[OperatorAdmission | None, EligibilityDecision]:
+        """Return admission facts and the canonical marketplace decision, read-only."""
+        if self.operators.get(operator_id) is None:
+            raise _not_found("Operator")
+        admission = self.admissions.get_by_operator(operator_id)
+        decision = ComplianceEvaluator(self.session).evaluate_operator(operator_id)
+        return admission, decision
+
     def operator_aircraft_eligibility(
         self, operator_id: UUID, aircraft_id: UUID
     ) -> EligibilityDecision:

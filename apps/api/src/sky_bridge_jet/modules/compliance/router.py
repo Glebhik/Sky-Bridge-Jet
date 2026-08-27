@@ -34,12 +34,17 @@ from sky_bridge_jet.modules.compliance.schemas import (
     EvidenceReviewCommand,
     OperatorAdmissionResponse,
     OperatorAircraftEligibilityResponse,
+    OperatorComplianceReadinessResponse,
     OperatorEligibilityResponse,
 )
 from sky_bridge_jet.modules.compliance.services import ComplianceService
 from sky_bridge_jet.modules.core_aviation.domain import ResourceNotFoundError
 from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
-from sky_bridge_jet.modules.iam.dependencies import CurrentPrincipal, require_permission
+from sky_bridge_jet.modules.iam.dependencies import (
+    ActiveOrganization,
+    CurrentPrincipal,
+    require_permission,
+)
 from sky_bridge_jet.modules.iam.domain import Permission
 
 router = APIRouter(tags=["compliance"])
@@ -169,6 +174,30 @@ def _operator_eligibility(
 ) -> OperatorEligibilityResponse:
     return OperatorEligibilityResponse(
         operator_id=operator_id, eligible=decision.eligible, reasons=decision.reasons
+    )
+
+
+@router.get(
+    "/me/operator-compliance-readiness",
+    response_model=OperatorComplianceReadinessResponse,
+    responses={403: _ERR},
+    operation_id="getMyOperatorComplianceReadiness",
+)
+def get_my_operator_compliance_readiness(
+    principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
+    session: DatabaseSession,
+) -> OperatorComplianceReadinessResponse:
+    """Read marketplace readiness for the validated active operator organization."""
+    operator_id = access.active_operator_id(principal, active_organization)
+    access.require_operator_access(principal, Permission.OPERATOR_READ, operator_id)
+    admission, decision = ComplianceService(session).operator_readiness(operator_id)
+    return OperatorComplianceReadinessResponse(
+        admission_status=admission.status if admission is not None else None,
+        marketplace_eligible=decision.eligible,
+        blockers=decision.reasons,
+        created_at=admission.created_at if admission is not None else None,
+        updated_at=admission.updated_at if admission is not None else None,
     )
 
 

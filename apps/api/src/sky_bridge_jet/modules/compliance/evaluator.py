@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import UUID
@@ -10,12 +9,9 @@ from sqlalchemy.orm import Session
 from sky_bridge_jet.modules.compliance.domain import (
     AircraftAuthorizationStatus,
     EligibilityReasonCode,
-    EvidenceStatus,
     EvidenceType,
     OperatorAdmissionStatus,
-    is_evidence_current,
 )
-from sky_bridge_jet.modules.compliance.models import ComplianceEvidence
 from sky_bridge_jet.modules.compliance.repositories import (
     ComplianceEvidenceRepository,
     OperatorAdmissionRepository,
@@ -84,9 +80,15 @@ class ComplianceEvaluator:
             reasons.append(_NOT_ADMITTED_REASONS[admission.status])
 
         for evidence_type in _REQUIRED_OPERATOR_EVIDENCE:
-            items = self.evidence.list_operator_level_by_type(operator_id, evidence_type)
-            if not self._has_current_evidence(items, now=now):
-                reasons.append(self._evidence_reason(items, evidence_type, now=now))
+            current, expired = self.evidence.operator_level_eligibility_facts(
+                operator_id, evidence_type, now=now
+            )
+            if not current:
+                reasons.append(
+                    _EXPIRED_EVIDENCE_REASON[evidence_type]
+                    if expired
+                    else _MISSING_EVIDENCE_REASON[evidence_type]
+                )
 
         return EligibilityDecision(eligible=not reasons, reasons=reasons)
 
@@ -120,21 +122,3 @@ class ComplianceEvaluator:
             reasons.append(EligibilityReasonCode.AIRCRAFT_NOT_AUTHORIZED)
 
         return EligibilityDecision(eligible=not reasons, reasons=reasons)
-
-    @staticmethod
-    def _has_current_evidence(items: Sequence[ComplianceEvidence], *, now: datetime) -> bool:
-        return any(is_evidence_current(item.status, item.expiry_date, now=now) for item in items)
-
-    @staticmethod
-    def _evidence_reason(
-        items: Sequence[ComplianceEvidence], evidence_type: EvidenceType, *, now: datetime
-    ) -> EligibilityReasonCode:
-        has_expired = any(
-            item.status is EvidenceStatus.VERIFIED
-            and item.expiry_date is not None
-            and now >= item.expiry_date
-            for item in items
-        )
-        if has_expired:
-            return _EXPIRED_EVIDENCE_REASON[evidence_type]
-        return _MISSING_EVIDENCE_REASON[evidence_type]

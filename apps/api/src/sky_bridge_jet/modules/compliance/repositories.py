@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, and_, exists, or_, select
 from sqlalchemy.orm import Session
 
-from sky_bridge_jet.modules.compliance.domain import ComplianceEntityType, EvidenceType
+from sky_bridge_jet.modules.compliance.domain import (
+    ComplianceEntityType,
+    EvidenceStatus,
+    EvidenceType,
+)
 from sky_bridge_jet.modules.compliance.models import (
     ComplianceAuditEvent,
     ComplianceEvidence,
@@ -58,16 +63,29 @@ class ComplianceEvidenceRepository:
         )
         return self.session.scalars(statement).all()
 
-    def list_operator_level_by_type(
-        self, operator_id: UUID, evidence_type: EvidenceType
-    ) -> Sequence[ComplianceEvidence]:
-        """Operator-level (not aircraft-scoped) evidence of a given type."""
-        statement = select(ComplianceEvidence).where(
+    def operator_level_eligibility_facts(
+        self, operator_id: UUID, evidence_type: EvidenceType, *, now: datetime
+    ) -> tuple[bool, bool]:
+        """Return bounded current/expired facts without materializing evidence history."""
+        scope = (
             ComplianceEvidence.operator_id == operator_id,
             ComplianceEvidence.evidence_type == evidence_type,
             ComplianceEvidence.aircraft_id.is_(None),
+            ComplianceEvidence.status == EvidenceStatus.VERIFIED,
         )
-        return self.session.scalars(statement).all()
+        current = exists().where(
+            *scope,
+            or_(ComplianceEvidence.expiry_date.is_(None), now < ComplianceEvidence.expiry_date),
+        )
+        expired = exists().where(
+            *scope,
+            and_(
+                ComplianceEvidence.expiry_date.is_not(None),
+                now >= ComplianceEvidence.expiry_date,
+            ),
+        )
+        row = self.session.execute(select(current, expired)).one()
+        return bool(row[0]), bool(row[1])
 
 
 class OperatorAircraftAuthorizationRepository:
