@@ -88,6 +88,17 @@ class OperatorAircraftAuthorizationRepository:
     ) -> OperatorAircraftAuthorization | None:
         return self.session.scalar(self._by_pair(operator_id, aircraft_id).with_for_update())
 
+    def list_for_aircraft_ids(
+        self, operator_id: UUID, aircraft_ids: Sequence[UUID]
+    ) -> Sequence[OperatorAircraftAuthorization]:
+        if not aircraft_ids:
+            return ()
+        statement = select(OperatorAircraftAuthorization).where(
+            OperatorAircraftAuthorization.operator_id == operator_id,
+            OperatorAircraftAuthorization.aircraft_id.in_(aircraft_ids),
+        )
+        return self.session.scalars(statement).all()
+
     @staticmethod
     def _by_pair(
         operator_id: UUID, aircraft_id: UUID

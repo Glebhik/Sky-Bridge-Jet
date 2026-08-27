@@ -22,6 +22,7 @@ from sky_bridge_jet.modules.iam.domain import Permission
 from sky_bridge_jet.modules.offers.domain import OfferConflictError, effective_offer_status
 from sky_bridge_jet.modules.offers.models import OperatorOffer
 from sky_bridge_jet.modules.offers.schemas import (
+    ActiveOperatorOfferCreate,
     OperatorOfferCreate,
     OperatorOfferResponse,
     OperatorOfferUpdate,
@@ -116,9 +117,8 @@ def create_offer(
     active_organization: ActiveOrganization,
     session: DatabaseSession,
 ) -> OperatorOfferResponse:
-    # The offering operator is derived from the active OPERATOR org; a body operator_id
-    # may only confirm that tenant. The service still enforces that the aircraft and
-    # trip belong together (aircraft↔operator mismatch remains a 422 domain error).
+    # Preserve the existing trusted/platform contract. Operator callers may only
+    # confirm their active tenant; the scoped browser command below omits this field.
     owner = access.resolve_write_operator(
         session,
         principal,
@@ -132,6 +132,33 @@ def create_offer(
         request,
         principal,
         action="createOperatorOffer",
+        owner_operator_id=owner,
+        resource_reference=owner,
+    )
+    return _to_response(OperatorOfferService(session).create(scoped, on_commit=hook))
+
+
+@router.post(
+    "/me/operator-offers",
+    response_model=OperatorOfferResponse,
+    responses={403: _ERR, 404: _ERR, 409: _ERR},
+    status_code=status.HTTP_201_CREATED,
+    operation_id="createMyOperatorOffer",
+)
+def create_my_operator_offer(
+    data: ActiveOperatorOfferCreate,
+    request: Request,
+    principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
+    session: DatabaseSession,
+) -> OperatorOfferResponse:
+    owner = access.active_operator_id(principal, active_organization)
+    access.require_operator_access(principal, Permission.OFFER_MANAGE, owner)
+    scoped = OperatorOfferCreate(operator_id=owner, **data.model_dump())
+    hook = _write_hook(
+        request,
+        principal,
+        action="createMyOperatorOffer",
         owner_operator_id=owner,
         resource_reference=owner,
     )

@@ -26,6 +26,7 @@ from sky_bridge_jet.modules.core_aviation.schemas import (
     CustomerCreate,
     CustomerResponse,
     ErrorResponse,
+    OperatorAircraftResponse,
     OperatorCreate,
     OperatorOpportunityResponse,
     OperatorResponse,
@@ -66,6 +67,8 @@ _REQUIRE_OPERATOR_ADMIN = require_permission(Permission.ADMIN_ORGANIZATIONS_MANA
 
 OpportunityLimit = Annotated[int, Query(ge=1, le=100)]
 OpportunityOffset = Annotated[int, Query(ge=0)]
+AircraftLimit = Annotated[int, Query(ge=1, le=100)]
+AircraftOffset = Annotated[int, Query(ge=0)]
 
 
 def _route_operation(request: Request) -> str:
@@ -453,6 +456,38 @@ def list_my_operator_opportunities(
     return OperatorOpportunityService(session).list_for_operator(
         operator_id, limit=limit, offset=offset
     )
+
+
+@router.get(
+    "/me/operator-aircraft",
+    response_model=list[OperatorAircraftResponse],
+    responses={403: {"model": ErrorResponse}},
+    operation_id="listMyOperatorAircraft",
+)
+def list_my_operator_aircraft(
+    principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
+    session: DatabaseSession,
+    limit: AircraftLimit = 20,
+    offset: AircraftOffset = 0,
+) -> list[OperatorAircraftResponse]:
+    operator_id = access.active_operator_id(principal, active_organization)
+    access.require_operator_access(principal, Permission.OPERATOR_READ, operator_id)
+    return [
+        OperatorAircraftResponse(
+            id=choice.aircraft.id,
+            registration=choice.aircraft.registration,
+            manufacturer=choice.aircraft.manufacturer,
+            model=choice.aircraft.model,
+            category=choice.aircraft.category,
+            passenger_capacity=choice.aircraft.passenger_capacity,
+            status=choice.aircraft.status,
+            eligible=choice.eligible,
+        )
+        for choice in OperatorService(session).list_operator_aircraft(
+            operator_id, limit=limit, offset=offset
+        )
+    ]
 
 
 @router.post(

@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
+from sky_bridge_jet.modules.compliance.domain import AircraftAuthorizationStatus
+from sky_bridge_jet.modules.compliance.evaluator import ComplianceEvaluator
+from sky_bridge_jet.modules.compliance.repositories import (
+    OperatorAircraftAuthorizationRepository,
+)
 from sky_bridge_jet.modules.core_aviation.domain import (
     ConcurrencyConflictError,
     DomainValidationError,
@@ -50,6 +56,12 @@ def _not_found(resource_name: str) -> ResourceNotFoundError:
 # command's transaction (Phase 9.0.A-1 platform-exception auditing). A plain callable
 # keeps the domain services decoupled from the IAM/audit modules.
 OnCommit = Callable[[Session], None] | None
+
+
+@dataclass(frozen=True)
+class OperatorAircraftChoice:
+    aircraft: Aircraft
+    eligible: bool
 
 
 class CustomerService:
@@ -184,6 +196,29 @@ class OperatorService:
         if aircraft is None:
             raise _not_found("Aircraft")
         return aircraft
+
+    def list_operator_aircraft(
+        self, operator_id: UUID, *, limit: int, offset: int
+    ) -> list[OperatorAircraftChoice]:
+        """Return a bounded owned-aircraft page with batched factual eligibility."""
+        operator_eligible = (
+            ComplianceEvaluator(self.session).evaluate_operator(operator_id).eligible
+        )
+        aircraft = list(self.aircraft.list_for_operator(operator_id, limit=limit, offset=offset))
+        authorizations = OperatorAircraftAuthorizationRepository(
+            self.session
+        ).list_for_aircraft_ids(operator_id, [item.id for item in aircraft])
+        authorization_by_aircraft = {
+            authorization.aircraft_id: authorization.status for authorization in authorizations
+        }
+        return [
+            OperatorAircraftChoice(
+                aircraft=item,
+                eligible=operator_eligible
+                and authorization_by_aircraft.get(item.id) is AircraftAuthorizationStatus.APPROVED,
+            )
+            for item in aircraft
+        ]
 
 
 class TripRequestService:
