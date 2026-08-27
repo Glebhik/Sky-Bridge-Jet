@@ -95,9 +95,12 @@ class PaymentProvider(Protocol):
 # fields. They are transient inputs and are never persisted.
 DECLINE_AUTHORIZATION = "decline-authorization"
 DECLINE_CAPTURE = "decline-capture"
+DECLINE_CAPTURE_AND_VOID = "decline-capture-and-void"
+DECLINE_VOID = "decline-void"
 DECLINE_REFUND = "decline-refund"
 
 _CAPTURE_FAIL_MARKER = "CAPFAIL"
+_VOID_FAIL_MARKER = "VOIDFAIL"
 _REFUND_FAIL_MARKER = "REFFAIL"
 
 
@@ -131,6 +134,10 @@ class FakePaymentProvider:
             )
         if payment_method_reference == DECLINE_CAPTURE:
             reference = self._reference(_CAPTURE_FAIL_MARKER)
+        elif payment_method_reference == DECLINE_CAPTURE_AND_VOID:
+            reference = self._reference(f"{_CAPTURE_FAIL_MARKER}_{_VOID_FAIL_MARKER}")
+        elif payment_method_reference == DECLINE_VOID:
+            reference = self._reference(_VOID_FAIL_MARKER)
         elif payment_method_reference == DECLINE_REFUND:
             reference = self._reference(_REFUND_FAIL_MARKER)
         else:
@@ -152,6 +159,12 @@ class FakePaymentProvider:
         )
 
     def void(self, *, provider_reference: str, idempotency_key: str) -> ProviderResult:
+        if _VOID_FAIL_MARKER in provider_reference:
+            return ProviderResult(
+                outcome=ProviderOutcome.FAILED,
+                provider_reference=provider_reference,
+                failure_code="void_declined",
+            )
         return ProviderResult(
             outcome=ProviderOutcome.SUCCEEDED,
             provider_reference=provider_reference.replace("fauth", "fvoid", 1),

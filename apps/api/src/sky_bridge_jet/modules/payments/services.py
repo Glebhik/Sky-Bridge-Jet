@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from sky_bridge_jet.core.config import Settings, get_settings
 from sky_bridge_jet.core.stripe_gateway import build_stripe_gateway
 from sky_bridge_jet.modules.bookings.domain import BookingStatus
+from sky_bridge_jet.modules.bookings.models import Booking
 from sky_bridge_jet.modules.bookings.repositories import BookingRepository
 from sky_bridge_jet.modules.core_aviation.domain import ResourceNotFoundError
 from sky_bridge_jet.modules.payments.domain import (
@@ -309,98 +310,144 @@ class PaymentService:
         self, payment_id: UUID, data: PaymentCapture, *, on_commit: OnCommit = None
     ) -> Payment:
         with self.session.begin():
-            payment = self.payments.get_for_update(payment_id)
+            payment = self.payments.get(payment_id)
             if payment is None:
                 raise _not_found("Payment")
-            if self._replay(data.idempotency_key, payment, PaymentOperationType.CAPTURE):
-                return payment
-
-            # Lock the booking row so a concurrent cancellation cannot interleave.
             booking = self.bookings.get_for_update(payment.booking_id)
             if booking is None:
                 raise _not_found("Booking")
-            if booking.status is not BookingStatus.CONFIRMED:
-                raise PaymentEligibilityError("Capture requires a confirmed booking")
-            if not is_capturable(payment.status):
-                raise InvalidPaymentStateError("Payment cannot be captured in its current state")
-            if (
-                payment.provider_payment_reference is None
-                or payment.authorized_amount_minor is None
-            ):
-                raise InvalidPaymentStateError("Payment has no authorization to capture")
+            payment = self.payments.get_for_update(payment_id)
+            assert payment is not None
+            return self._capture_locked(payment, booking, data, on_commit=on_commit)
 
-            result = self._provider_for(payment).capture(
-                provider_reference=payment.provider_payment_reference,
-                amount_minor=payment.authorized_amount_minor,
-                currency=payment.currency,
-                idempotency_key=data.idempotency_key,
-            )
-            payment.provider_status = result.provider_status
-            if result.outcome is ProviderOutcome.FAILED:
-                payment.status = validate_payment_transition(
-                    payment.status, PaymentStatus.CAPTURE_FAILED
-                )
-                self._record(
-                    payment,
-                    PaymentOperationType.CAPTURE,
-                    PaymentOperationResult.FAILED,
-                    data.idempotency_key,
-                    amount_minor=payment.authorized_amount_minor,
-                    provider_reference=result.provider_reference,
-                    failure_code=result.failure_code,
-                )
-            else:
-                payment.status = validate_payment_transition(payment.status, PaymentStatus.CAPTURED)
-                payment.captured_amount_minor = payment.authorized_amount_minor
-                payment.captured_at = _utc_now()
-                if result.provider_reference is not None:
-                    payment.provider_payment_reference = result.provider_reference
-                self._record(
-                    payment,
-                    PaymentOperationType.CAPTURE,
-                    PaymentOperationResult.SUCCEEDED,
-                    data.idempotency_key,
-                    amount_minor=payment.captured_amount_minor,
-                    provider_reference=result.provider_reference,
-                )
-            self.session.flush()
-            # Audit a committed capture, but never a capture failure.
-            if on_commit is not None and payment.status is not PaymentStatus.CAPTURE_FAILED:
-                on_commit(self.session)
+    def _capture_locked(
+        self,
+        payment: Payment,
+        booking: Booking,
+        data: PaymentCapture,
+        *,
+        on_commit: OnCommit = None,
+    ) -> Payment:
+        if self._replay(data.idempotency_key, payment, PaymentOperationType.CAPTURE):
             return payment
+        if booking.status is not BookingStatus.CONFIRMED:
+            raise PaymentEligibilityError("Capture requires a confirmed booking")
+        if not is_capturable(payment.status):
+            raise InvalidPaymentStateError("Payment cannot be captured in its current state")
+        if payment.provider_payment_reference is None or payment.authorized_amount_minor is None:
+            raise InvalidPaymentStateError("Payment has no authorization to capture")
+
+        result = self._provider_for(payment).capture(
+            provider_reference=payment.provider_payment_reference,
+            amount_minor=payment.authorized_amount_minor,
+            currency=payment.currency,
+            idempotency_key=data.idempotency_key,
+        )
+        payment.provider_status = result.provider_status
+        if result.outcome is ProviderOutcome.FAILED:
+            payment.status = validate_payment_transition(
+                payment.status, PaymentStatus.CAPTURE_FAILED
+            )
+            self._record(
+                payment,
+                PaymentOperationType.CAPTURE,
+                PaymentOperationResult.FAILED,
+                data.idempotency_key,
+                amount_minor=payment.authorized_amount_minor,
+                provider_reference=result.provider_reference,
+                failure_code=result.failure_code,
+            )
+        else:
+            payment.status = validate_payment_transition(payment.status, PaymentStatus.CAPTURED)
+            payment.captured_amount_minor = payment.authorized_amount_minor
+            payment.captured_at = _utc_now()
+            if result.provider_reference is not None:
+                payment.provider_payment_reference = result.provider_reference
+            self._record(
+                payment,
+                PaymentOperationType.CAPTURE,
+                PaymentOperationResult.SUCCEEDED,
+                data.idempotency_key,
+                amount_minor=payment.captured_amount_minor,
+                provider_reference=result.provider_reference,
+            )
+        self.session.flush()
+        if on_commit is not None and payment.status is not PaymentStatus.CAPTURE_FAILED:
+            on_commit(self.session)
+        return payment
 
     def void(self, payment_id: UUID, data: PaymentVoid, *, on_commit: OnCommit = None) -> Payment:
         with self.session.begin():
-            payment = self.payments.get_for_update(payment_id)
+            payment = self.payments.get(payment_id)
             if payment is None:
                 raise _not_found("Payment")
-            if self._replay(data.idempotency_key, payment, PaymentOperationType.VOID):
-                return payment
-            if not is_voidable(payment.status):
-                raise InvalidPaymentStateError("Payment cannot be voided in its current state")
+            booking = self.bookings.get_for_update(payment.booking_id)
+            if booking is None:
+                raise _not_found("Booking")
+            payment = self.payments.get_for_update(payment_id)
+            assert payment is not None
+            return self._void_locked(payment, data, on_commit=on_commit)
 
-            provider_reference = payment.provider_payment_reference
-            if payment.status is PaymentStatus.AUTHORIZED and provider_reference is not None:
-                result = self._provider_for(payment).void(
-                    provider_reference=provider_reference,
-                    idempotency_key=data.idempotency_key,
-                )
-                provider_reference = result.provider_reference
-
-            payment.status = validate_payment_transition(payment.status, PaymentStatus.CANCELLED)
-            payment.cancelled_at = _utc_now()
-            self._record(
-                payment,
-                PaymentOperationType.VOID,
-                PaymentOperationResult.SUCCEEDED,
-                data.idempotency_key,
-                amount_minor=payment.authorized_amount_minor or 0,
-                provider_reference=provider_reference,
-            )
-            self.session.flush()
-            if on_commit is not None:
-                on_commit(self.session)
+    def _void_locked(
+        self, payment: Payment, data: PaymentVoid, *, on_commit: OnCommit = None
+    ) -> Payment:
+        if self._replay(data.idempotency_key, payment, PaymentOperationType.VOID):
             return payment
+        if not is_voidable(payment.status):
+            raise InvalidPaymentStateError("Payment cannot be voided in its current state")
+
+        provider_reference = payment.provider_payment_reference
+        # A provider reference is the authoritative signal that a provider-side
+        # authorization/intent still exists. CAPTURE_FAILED retains that reference,
+        # so local cancellation must not be declared until provider void succeeds.
+        if provider_reference is not None:
+            result = self._provider_for(payment).void(
+                provider_reference=provider_reference, idempotency_key=data.idempotency_key
+            )
+            provider_reference = result.provider_reference
+            if result.outcome is ProviderOutcome.FAILED:
+                self._record(
+                    payment,
+                    PaymentOperationType.VOID,
+                    PaymentOperationResult.FAILED,
+                    data.idempotency_key,
+                    amount_minor=payment.authorized_amount_minor or 0,
+                    provider_reference=provider_reference,
+                    failure_code=result.failure_code,
+                )
+                self.session.flush()
+                return payment
+
+        payment.status = validate_payment_transition(payment.status, PaymentStatus.CANCELLED)
+        payment.cancelled_at = _utc_now()
+        self._record(
+            payment,
+            PaymentOperationType.VOID,
+            PaymentOperationResult.SUCCEEDED,
+            data.idempotency_key,
+            amount_minor=payment.authorized_amount_minor or 0,
+            provider_reference=provider_reference,
+        )
+        self.session.flush()
+        if on_commit is not None:
+            on_commit(self.session)
+        return payment
+
+    def orchestrate_booking_transition(self, booking: Booking, transition: str) -> Payment | None:
+        """Apply the trusted financial consequence of an already locked Booking transition."""
+        payment = self.payments.get_by_booking_for_update(booking.id)
+        if payment is None:
+            return None
+        key = f"booking:{booking.id}:{transition}"
+        if transition == "confirm:capture":
+            if payment.status in {PaymentStatus.AUTHORIZED, PaymentStatus.CAPTURE_FAILED}:
+                return self._capture_locked(payment, booking, PaymentCapture(idempotency_key=key))
+            return payment
+        if transition in {"reject:void", "cancel:void"}:
+            if is_voidable(payment.status):
+                return self._void_locked(payment, PaymentVoid(idempotency_key=key))
+            return payment
+        raise ValueError("Unsupported booking payment orchestration transition")
 
     def refund(
         self, payment_id: UUID, data: RefundCreate, *, on_commit: OnCommit = None
