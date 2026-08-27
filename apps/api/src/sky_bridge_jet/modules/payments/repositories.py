@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from sky_bridge_jet.modules.payments.domain import PaymentOperationType
+from sky_bridge_jet.modules.payments.domain import PaymentOperationResult, PaymentOperationType
 from sky_bridge_jet.modules.payments.models import Payment, PaymentOperation
 
 
@@ -33,7 +33,12 @@ class PaymentRepository:
         return self.session.scalar(select(Payment).where(Payment.booking_id == booking_id))
 
     def get_by_booking_for_update(self, booking_id: UUID) -> Payment | None:
-        statement = select(Payment).where(Payment.booking_id == booking_id).with_for_update()
+        statement = (
+            select(Payment)
+            .where(Payment.booking_id == booking_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         return self.session.scalar(statement)
 
 
@@ -59,6 +64,36 @@ class PaymentOperationRepository:
     def get_by_idempotency_key(self, idempotency_key: str) -> PaymentOperation | None:
         return self.session.scalar(
             select(PaymentOperation).where(PaymentOperation.idempotency_key == idempotency_key)
+        )
+
+    def get_by_correlation_id(self, correlation_id: UUID) -> PaymentOperation | None:
+        return self.session.scalar(
+            select(PaymentOperation)
+            .where(PaymentOperation.correlation_id == correlation_id)
+            .with_for_update()
+        )
+
+    def get_unresolved(
+        self, payment_id: UUID, operation: PaymentOperationType
+    ) -> PaymentOperation | None:
+        return self.session.scalar(
+            select(PaymentOperation).where(
+                PaymentOperation.payment_id == payment_id,
+                PaymentOperation.operation == operation,
+                PaymentOperation.result.in_(
+                    [PaymentOperationResult.PENDING, PaymentOperationResult.UNKNOWN]
+                ),
+            )
+        )
+
+    def get_any_unresolved(self, payment_id: UUID) -> PaymentOperation | None:
+        return self.session.scalar(
+            select(PaymentOperation).where(
+                PaymentOperation.payment_id == payment_id,
+                PaymentOperation.result.in_(
+                    [PaymentOperationResult.PENDING, PaymentOperationResult.UNKNOWN]
+                ),
+            )
         )
 
     def list_refunds(self, payment_id: UUID) -> Sequence[PaymentOperation]:

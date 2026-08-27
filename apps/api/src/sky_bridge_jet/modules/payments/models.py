@@ -191,6 +191,20 @@ class PaymentOperation(Base):
     amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     provider_reference: Mapped[str | None] = mapped_column(String(200), nullable=True)
     failure_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    provider_kind: Mapped[PaymentProviderKind] = mapped_column(
+        payment_provider_enum, nullable=False
+    )
+    correlation_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), default=uuid4, nullable=False, unique=True
+    )
+    attempt_count: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=_utc_now,
+        server_default=func.now(),
+        onupdate=_utc_now,
+        nullable=False,
+    )
 
     payment: Mapped[Payment] = relationship(back_populates="operations")
 

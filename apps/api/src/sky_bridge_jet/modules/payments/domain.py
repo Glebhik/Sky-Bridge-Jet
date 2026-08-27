@@ -43,8 +43,10 @@ class PaymentOperationType(StrEnum):
 
 
 class PaymentOperationResult(StrEnum):
+    PENDING = "PENDING"
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
+    UNKNOWN = "UNKNOWN"
 
 
 class SettlementEligibility(StrEnum):

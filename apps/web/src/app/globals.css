@@ -2314,6 +2314,18 @@ a.resource-list__reference:hover {
   gap: 0.65rem;
 }
 
+.portal .booking-payment__stripe {
+  display: grid;
+  gap: 0.9rem;
+  min-width: 0;
+  max-width: 38rem;
+  overflow-wrap: anywhere;
+}
+
+.portal .booking-payment__stripe iframe {
+  max-width: 100%;
+}
+
 .portal .booking-payment .button {
   max-width: 100%;
   min-height: 2.75rem;

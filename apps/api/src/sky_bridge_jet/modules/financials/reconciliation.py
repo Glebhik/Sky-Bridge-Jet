@@ -27,6 +27,7 @@ _PAYMENT_EVENTS = {
     "payment_intent.amount_capturable_updated": ProviderPaymentEvent.AUTHORIZED,
     "payment_intent.payment_failed": ProviderPaymentEvent.AUTHORIZATION_FAILED,
     "payment_intent.succeeded": ProviderPaymentEvent.CAPTURED,
+    "payment_intent.canceled": ProviderPaymentEvent.CANCELLED,
 }
 
 
@@ -95,6 +96,9 @@ class WebhookReconciliationService:
                 provider_reference=event.object_id,
                 event=payment_event,
                 provider_status=event.data.get("status"),
+                operation_correlation=(event.data.get("metadata") or {}).get(
+                    "operation_correlation"
+                ),
             )
             row.entity_reference = str(changed) if changed is not None else event.object_id
             row.status = WebhookProcessingStatus.PROCESSED

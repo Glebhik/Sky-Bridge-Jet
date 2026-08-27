@@ -196,7 +196,9 @@ def initiate_booking_payment(
         raise ResourceNotFoundError("Booking was not found")
     session.rollback()
     payment = PaymentService(session).initiate_for_customer(booking_id, data)
-    return CustomerPaymentInitiateResponse.model_validate(customer_payment_view(payment))
+    # The initiation response alone may carry the transient Stripe client action.
+    # The customer read projection remains action/secret-free.
+    return CustomerPaymentInitiateResponse.model_validate(payment)
 
 
 @router.get(

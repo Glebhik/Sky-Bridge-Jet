@@ -24,6 +24,8 @@ from sky_bridge_jet.modules.access import PAYMENT_OPERATION_EVENT
 from sky_bridge_jet.modules.iam.dependencies import is_public_route
 from sky_bridge_jet.modules.iam.domain import OrganizationRole
 from sky_bridge_jet.modules.iam.models import AuthAuditLog
+from sky_bridge_jet.modules.payments.domain import PaymentOperationType
+from sky_bridge_jet.modules.payments.models import PaymentOperation
 from sky_bridge_jet.modules.payments.schemas import PaymentVoid
 from sky_bridge_jet.modules.payments.services import PaymentService
 
@@ -208,8 +210,20 @@ def test_concurrent_captures_transition_once(admin: TestClient, airports: list) 
     for t in threads:
         t.join()
 
-    assert sorted(outcomes) == [200, 409]  # the row lock serializes; one capture wins
+    # One durable capture wins. A waiter that arrives after finalization receives
+    # the authoritative CAPTURED no-op, but it cannot create a second operation.
+    assert sorted(outcomes) in ([200, 409], [200, 200])
     assert admin.get(f"/api/v1/payments/{pid}").json()["status"] == "CAPTURED"
+    with SessionLocal() as session:
+        capture_count = session.scalar(
+            select(func.count())
+            .select_from(PaymentOperation)
+            .where(
+                PaymentOperation.payment_id == UUID(pid),
+                PaymentOperation.operation == PaymentOperationType.CAPTURE,
+            )
+        )
+    assert capture_count == 1
     # Exactly one capture succeeded → exactly one audit record from the two racers.
     assert _count() >= before  # (racers use their own owner ids; owner_user unchanged)
 

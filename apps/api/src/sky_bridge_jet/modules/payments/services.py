@@ -34,6 +34,7 @@ from sky_bridge_jet.modules.payments.domain import (
 from sky_bridge_jet.modules.payments.models import Payment, PaymentOperation
 from sky_bridge_jet.modules.payments.provider import (
     PaymentProvider,
+    PaymentProviderError,
     ProviderOutcome,
     get_payment_provider,
 )
@@ -182,13 +183,7 @@ class PaymentService:
     def initiate_for_customer(
         self, booking_id: UUID, data: CustomerPaymentInitiate, *, on_commit: OnCommit = None
     ) -> Payment:
-        """Create/reuse and authorize one booking payment through the existing engine.
-
-        The global key is checked while the Booking is locked and before creation,
-        early return, or provider invocation. Creation plus authorization then share
-        one transaction; the operation-key unique constraint remains the final
-        concurrency backstop.
-        """
+        """Create/reuse a payment, then run the durable authorization attempt."""
         with self.session.begin():
             booking = self.bookings.get_for_update(booking_id)
             if booking is None:
@@ -208,7 +203,15 @@ class PaymentService:
                 )
             if payment is None:
                 payment = self._create_for_booking_locked(booking_id)
-            if operation is not None:
+            unresolved = self.operations.get_unresolved(payment.id, PaymentOperationType.AUTHORIZE)
+            if unresolved is not None and unresolved.idempotency_key != data.idempotency_key:
+                # A different key cannot start a second intent while the durable
+                # logical authorization attempt is unresolved.
+                return payment
+            if operation is not None and operation.result in {
+                PaymentOperationResult.SUCCEEDED,
+                PaymentOperationResult.FAILED,
+            }:
                 return payment
             if (
                 payment.status
@@ -223,18 +226,142 @@ class PaymentService:
                 return payment
             if payment.status is PaymentStatus.CANCELLED:
                 raise InvalidPaymentStateError("Payment cannot be authorized in its current state")
-            return self._authorize_locked(
-                payment, PaymentAuthorize(idempotency_key=data.idempotency_key), on_commit=on_commit
-            )
+            if operation is None:
+                operation = self._record(
+                    payment,
+                    PaymentOperationType.AUTHORIZE,
+                    PaymentOperationResult.PENDING,
+                    data.idempotency_key,
+                    amount_minor=payment.total_amount_minor,
+                    provider_reference=None,
+                )
+                # Reservation is durable before dispatch; the dispatcher owns
+                # incrementing the count for each actual provider attempt.
+                operation.attempt_count = 0
+                self.session.flush()
+            payment_id = payment.id
+        return self._authorize_durable(
+            payment_id,
+            PaymentAuthorize(idempotency_key=data.idempotency_key),
+            on_commit=on_commit,
+        )
 
     def authorize(
         self, payment_id: UUID, data: PaymentAuthorize, *, on_commit: OnCommit = None
     ) -> Payment:
+        return self._authorize_durable(payment_id, data, on_commit=on_commit)
+
+    def _authorize_durable(
+        self, payment_id: UUID, data: PaymentAuthorize, *, on_commit: OnCommit = None
+    ) -> Payment:
+        """Reserve durably, dispatch outside a DB transaction, then reconcile."""
         with self.session.begin():
             payment = self.payments.get_for_update(payment_id)
             if payment is None:
                 raise _not_found("Payment")
-            return self._authorize_locked(payment, data, on_commit=on_commit)
+            existing = self._replay_operation(
+                data.idempotency_key, payment, PaymentOperationType.AUTHORIZE
+            )
+            if existing is not None and existing.result in {
+                PaymentOperationResult.SUCCEEDED,
+                PaymentOperationResult.FAILED,
+            }:
+                return payment
+            unresolved = self.operations.get_any_unresolved(payment.id)
+            if unresolved is not None and unresolved.id != getattr(existing, "id", None):
+                return payment
+            booking = self.bookings.get(payment.booking_id)
+            if booking is None:
+                raise _not_found("Booking")
+            if booking.status in {BookingStatus.REJECTED, BookingStatus.CANCELLED}:
+                raise PaymentEligibilityError("Booking is not eligible for authorization")
+            if existing is None:
+                if (
+                    payment.status
+                    in {
+                        PaymentStatus.AUTHORIZED,
+                        PaymentStatus.CAPTURED,
+                        PaymentStatus.PARTIALLY_REFUNDED,
+                        PaymentStatus.REFUNDED,
+                    }
+                    or payment.requires_customer_action
+                ):
+                    return payment
+                if not is_authorizable(payment.status):
+                    raise InvalidPaymentStateError(
+                        "Payment cannot be authorized in its current state"
+                    )
+                existing = self._record(
+                    payment,
+                    PaymentOperationType.AUTHORIZE,
+                    PaymentOperationResult.PENDING,
+                    data.idempotency_key,
+                    amount_minor=payment.total_amount_minor,
+                    provider_reference=None,
+                )
+                existing.attempt_count = 0
+            else:
+                existing.result = PaymentOperationResult.PENDING
+                existing.failure_code = None
+            existing.attempt_count += 1
+            self.session.flush()
+            provider = self._provider_for(payment)
+            provider_key = str(existing.correlation_id)
+            amount_minor = payment.total_amount_minor
+            currency = payment.currency
+
+        try:
+            result = provider.authorize(
+                amount_minor=amount_minor,
+                currency=currency,
+                payment_method_reference=data.payment_method_reference,
+                idempotency_key=provider_key,
+            )
+        except PaymentProviderError:
+            with self.session.begin():
+                operation = self.operations.get_by_idempotency_key(data.idempotency_key)
+                assert operation is not None
+                operation.result = PaymentOperationResult.UNKNOWN
+                operation.failure_code = "provider_outcome_unknown"
+                payment = self.payments.get_for_update(payment_id)
+                assert payment is not None
+                self.session.flush()
+                return payment
+
+        with self.session.begin():
+            payment = self.payments.get_for_update(payment_id)
+            operation = self.operations.get_by_idempotency_key(data.idempotency_key)
+            assert payment is not None and operation is not None
+            payment.provider_status = result.provider_status
+            operation.provider_reference = result.provider_reference
+            if payment.status is PaymentStatus.AUTHORIZED:
+                operation.result = PaymentOperationResult.SUCCEEDED
+                operation.failure_code = None
+                return payment
+            if result.provider_reference is not None:
+                payment.provider_payment_reference = result.provider_reference
+            if result.outcome is ProviderOutcome.FAILED:
+                payment.status = validate_payment_transition(
+                    payment.status, PaymentStatus.AUTHORIZATION_FAILED
+                )
+                operation.result = PaymentOperationResult.FAILED
+                operation.failure_code = result.failure_code
+            elif result.outcome is ProviderOutcome.REQUIRES_ACTION:
+                payment.requires_customer_action = True
+                operation.result = PaymentOperationResult.PENDING
+                payment.client_action = result.client_action
+            else:
+                payment.status = validate_payment_transition(
+                    payment.status, PaymentStatus.AUTHORIZED
+                )
+                payment.authorized_amount_minor = payment.total_amount_minor
+                payment.authorized_at = _utc_now()
+                payment.requires_customer_action = False
+                operation.result = PaymentOperationResult.SUCCEEDED
+            self.session.flush()
+            if on_commit is not None and operation.result is PaymentOperationResult.SUCCEEDED:
+                on_commit(self.session)
+            return payment
 
     def _authorize_locked(
         self, payment: Payment, data: PaymentAuthorize, *, on_commit: OnCommit = None
@@ -309,16 +436,99 @@ class PaymentService:
     def capture(
         self, payment_id: UUID, data: PaymentCapture, *, on_commit: OnCommit = None
     ) -> Payment:
+        return self._capture_durable(payment_id, data, on_commit=on_commit)
+
+    def _capture_durable(
+        self, payment_id: UUID, data: PaymentCapture, *, on_commit: OnCommit = None
+    ) -> Payment:
         with self.session.begin():
-            payment = self.payments.get(payment_id)
+            payment = self.payments.get_for_update(payment_id)
             if payment is None:
                 raise _not_found("Payment")
             booking = self.bookings.get_for_update(payment.booking_id)
             if booking is None:
                 raise _not_found("Booking")
+            existing = self._replay_operation(
+                data.idempotency_key, payment, PaymentOperationType.CAPTURE
+            )
+            unresolved = self.operations.get_any_unresolved(payment.id)
+            if unresolved is not None and unresolved.idempotency_key != data.idempotency_key:
+                return payment
+            if existing is not None and existing.result in {
+                PaymentOperationResult.SUCCEEDED,
+                PaymentOperationResult.FAILED,
+            }:
+                return payment
+            if booking.status is not BookingStatus.CONFIRMED:
+                raise PaymentEligibilityError("Capture requires a confirmed booking")
+            if existing is None:
+                if not is_capturable(payment.status):
+                    raise InvalidPaymentStateError(
+                        "Payment cannot be captured in its current state"
+                    )
+                if (
+                    payment.provider_payment_reference is None
+                    or payment.authorized_amount_minor is None
+                ):
+                    raise InvalidPaymentStateError("Payment has no authorization to capture")
+                existing = self._record(
+                    payment,
+                    PaymentOperationType.CAPTURE,
+                    PaymentOperationResult.PENDING,
+                    data.idempotency_key,
+                    amount_minor=payment.authorized_amount_minor,
+                    provider_reference=payment.provider_payment_reference,
+                )
+                existing.attempt_count = 0
+            else:
+                existing.result = PaymentOperationResult.PENDING
+                existing.failure_code = None
+            existing.attempt_count += 1
+            self.session.flush()
+            provider = self._provider_for(payment)
+            provider_key = str(existing.correlation_id)
+            provider_reference = payment.provider_payment_reference
+            amount_minor = payment.authorized_amount_minor
+            currency = payment.currency
+            assert provider_reference is not None and amount_minor is not None
+
+        try:
+            result = provider.capture(
+                provider_reference=provider_reference,
+                amount_minor=amount_minor,
+                currency=currency,
+                idempotency_key=provider_key,
+            )
+        except PaymentProviderError:
+            return self._mark_unknown(payment_id, data.idempotency_key)
+
+        with self.session.begin():
             payment = self.payments.get_for_update(payment_id)
-            assert payment is not None
-            return self._capture_locked(payment, booking, data, on_commit=on_commit)
+            operation = self.operations.get_by_idempotency_key(data.idempotency_key)
+            assert payment is not None and operation is not None
+            payment.provider_status = result.provider_status
+            operation.provider_reference = result.provider_reference
+            if payment.status is PaymentStatus.CAPTURED:
+                operation.result = PaymentOperationResult.SUCCEEDED
+                operation.failure_code = None
+                return payment
+            if result.outcome is ProviderOutcome.FAILED:
+                payment.status = validate_payment_transition(
+                    payment.status, PaymentStatus.CAPTURE_FAILED
+                )
+                operation.result = PaymentOperationResult.FAILED
+                operation.failure_code = result.failure_code
+            else:
+                payment.status = validate_payment_transition(payment.status, PaymentStatus.CAPTURED)
+                payment.captured_amount_minor = amount_minor
+                payment.captured_at = _utc_now()
+                operation.result = PaymentOperationResult.SUCCEEDED
+                if result.provider_reference is not None:
+                    payment.provider_payment_reference = result.provider_reference
+            self.session.flush()
+            if on_commit is not None and operation.result is PaymentOperationResult.SUCCEEDED:
+                on_commit(self.session)
+            return payment
 
     def _capture_locked(
         self,
@@ -377,16 +587,91 @@ class PaymentService:
         return payment
 
     def void(self, payment_id: UUID, data: PaymentVoid, *, on_commit: OnCommit = None) -> Payment:
+        return self._void_durable(payment_id, data, on_commit=on_commit)
+
+    def _void_durable(
+        self, payment_id: UUID, data: PaymentVoid, *, on_commit: OnCommit = None
+    ) -> Payment:
         with self.session.begin():
-            payment = self.payments.get(payment_id)
+            payment = self.payments.get_for_update(payment_id)
             if payment is None:
                 raise _not_found("Payment")
-            booking = self.bookings.get_for_update(payment.booking_id)
-            if booking is None:
-                raise _not_found("Booking")
+            existing = self._replay_operation(
+                data.idempotency_key, payment, PaymentOperationType.VOID
+            )
+            unresolved = self.operations.get_any_unresolved(payment.id)
+            if unresolved is not None and unresolved.idempotency_key != data.idempotency_key:
+                return payment
+            if existing is not None and existing.result in {
+                PaymentOperationResult.SUCCEEDED,
+                PaymentOperationResult.FAILED,
+            }:
+                return payment
+            if existing is None:
+                if not is_voidable(payment.status):
+                    raise InvalidPaymentStateError("Payment cannot be voided in its current state")
+                existing = self._record(
+                    payment,
+                    PaymentOperationType.VOID,
+                    PaymentOperationResult.PENDING,
+                    data.idempotency_key,
+                    amount_minor=payment.authorized_amount_minor or 0,
+                    provider_reference=payment.provider_payment_reference,
+                )
+                existing.attempt_count = 0
+            else:
+                existing.result = PaymentOperationResult.PENDING
+                existing.failure_code = None
+            existing.attempt_count += 1
+            self.session.flush()
+            provider = self._provider_for(payment)
+            provider_key = str(existing.correlation_id)
+            provider_reference = payment.provider_payment_reference
+
+        if provider_reference is not None:
+            try:
+                result = provider.void(
+                    provider_reference=provider_reference, idempotency_key=provider_key
+                )
+            except PaymentProviderError:
+                return self._mark_unknown(payment_id, data.idempotency_key)
+        else:
+            result = None
+
+        with self.session.begin():
             payment = self.payments.get_for_update(payment_id)
-            assert payment is not None
-            return self._void_locked(payment, data, on_commit=on_commit)
+            operation = self.operations.get_by_idempotency_key(data.idempotency_key)
+            assert payment is not None and operation is not None
+            if payment.status is PaymentStatus.CANCELLED:
+                operation.result = PaymentOperationResult.SUCCEEDED
+                operation.failure_code = None
+                return payment
+            if result is not None and result.outcome is ProviderOutcome.FAILED:
+                operation.result = PaymentOperationResult.FAILED
+                operation.failure_code = result.failure_code
+                operation.provider_reference = result.provider_reference
+                self.session.flush()
+                return payment
+            payment.status = validate_payment_transition(payment.status, PaymentStatus.CANCELLED)
+            payment.cancelled_at = _utc_now()
+            operation.result = PaymentOperationResult.SUCCEEDED
+            if result is not None:
+                payment.provider_status = result.provider_status
+                operation.provider_reference = result.provider_reference
+            self.session.flush()
+            if on_commit is not None:
+                on_commit(self.session)
+            return payment
+
+    def _mark_unknown(self, payment_id: UUID, idempotency_key: str) -> Payment:
+        with self.session.begin():
+            operation = self.operations.get_by_idempotency_key(idempotency_key)
+            payment = self.payments.get_for_update(payment_id)
+            assert operation is not None and payment is not None
+            operation.result = PaymentOperationResult.UNKNOWN
+            operation.failure_code = "provider_outcome_unknown"
+            self.session.flush()
+            return payment
 
     def _void_locked(
         self, payment: Payment, data: PaymentVoid, *, on_commit: OnCommit = None
@@ -434,18 +719,21 @@ class PaymentService:
         return payment
 
     def orchestrate_booking_transition(self, booking: Booking, transition: str) -> Payment | None:
-        """Apply the trusted financial consequence of an already locked Booking transition."""
-        payment = self.payments.get_by_booking_for_update(booking.id)
-        if payment is None:
-            return None
+        """Apply a committed Booking transition through the durable command path."""
+        with self.session.begin():
+            payment = self.payments.get_by_booking(booking.id)
+            if payment is None:
+                return None
+            payment_id = payment.id
+            payment_status = payment.status
         key = f"booking:{booking.id}:{transition}"
         if transition == "confirm:capture":
-            if payment.status in {PaymentStatus.AUTHORIZED, PaymentStatus.CAPTURE_FAILED}:
-                return self._capture_locked(payment, booking, PaymentCapture(idempotency_key=key))
+            if payment_status in {PaymentStatus.AUTHORIZED, PaymentStatus.CAPTURE_FAILED}:
+                return self.capture(payment_id, PaymentCapture(idempotency_key=key))
             return payment
         if transition in {"reject:void", "cancel:void"}:
-            if is_voidable(payment.status):
-                return self._void_locked(payment, PaymentVoid(idempotency_key=key))
+            if is_voidable(payment_status):
+                return self.void(payment_id, PaymentVoid(idempotency_key=key))
             return payment
         raise ValueError("Unsupported booking payment orchestration transition")
 
@@ -579,5 +867,7 @@ class PaymentService:
                 amount_minor=amount_minor,
                 provider_reference=provider_reference,
                 failure_code=failure_code,
+                provider_kind=payment.payment_provider,
+                attempt_count=1,
             )
         )

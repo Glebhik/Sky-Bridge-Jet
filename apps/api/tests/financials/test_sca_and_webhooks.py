@@ -11,6 +11,7 @@ from __future__ import annotations
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from sky_bridge_jet.db.session import SessionLocal
 from sky_bridge_jet.main import app
@@ -24,8 +25,13 @@ from sky_bridge_jet.modules.financials.router import (
     get_stripe_webhook_context,
 )
 from sky_bridge_jet.modules.financials.services import FinancialOnboardingService
-from sky_bridge_jet.modules.payments.domain import PaymentProviderKind, PaymentStatus
-from sky_bridge_jet.modules.payments.models import Payment
+from sky_bridge_jet.modules.payments.domain import (
+    PaymentOperationResult,
+    PaymentOperationType,
+    PaymentProviderKind,
+    PaymentStatus,
+)
+from sky_bridge_jet.modules.payments.models import Payment, PaymentOperation
 from sky_bridge_jet.modules.payments.schemas import PaymentAuthorize
 from sky_bridge_jet.modules.payments.services import PaymentService
 from sky_bridge_jet.modules.payments.stripe_adapter import StripeConnectPaymentProvider
@@ -85,6 +91,59 @@ def _payment_row(session, payment_id: str) -> Payment:
     row = session.get(Payment, UUID(payment_id))
     assert row is not None
     return row
+
+
+def _operation_correlation(payment_id: str, operation: PaymentOperationType) -> str:
+    with SessionLocal() as session:
+        row = session.scalar(
+            select(PaymentOperation).where(
+                PaymentOperation.payment_id == UUID(payment_id),
+                PaymentOperation.operation == operation,
+            )
+        )
+        assert row is not None
+        return str(row.correlation_id)
+
+
+def _reserve_operation(payment_id: str, operation: PaymentOperationType) -> str:
+    with SessionLocal.begin() as session:
+        payment = _payment_row(session, payment_id)
+        row = PaymentOperation(
+            payment_id=payment.id,
+            operation=operation,
+            result=PaymentOperationResult.UNKNOWN,
+            idempotency_key=f"webhook-{uuid4()}",
+            amount_minor=payment.authorized_amount_minor or payment.total_amount_minor,
+            provider_reference=payment.provider_payment_reference,
+            provider_kind=PaymentProviderKind.STRIPE,
+            attempt_count=1,
+        )
+        session.add(row)
+        session.flush()
+        return str(row.correlation_id)
+
+
+def _post_signed_payment_event(
+    client: TestClient,
+    *,
+    event_type: str,
+    provider_reference: str,
+    correlation: str,
+    status: str,
+) -> None:
+    body = signed_event(
+        f"evt_{uuid4().hex}",
+        event_type,
+        provider_reference,
+        status=status,
+        metadata={"operation_correlation": correlation},
+    )
+    response = client.post(
+        "/api/v1/webhooks/stripe",
+        content=body,
+        headers={"Stripe-Signature": VALID_SIGNATURE},
+    )
+    assert response.status_code == 200, response.text
 
 
 @requires_db
@@ -225,3 +284,125 @@ def test_webhook_endpoint_duplicate_ack(client: TestClient, airports: list) -> N
         assert second.json()["duplicate"] is True
     finally:
         app.dependency_overrides.pop(get_stripe_webhook_context, None)
+
+
+@requires_db
+def test_signed_payment_webhooks_enforce_canonical_operation_mapping(
+    client: TestClient, airports: list
+) -> None:
+    app.dependency_overrides[get_stripe_webhook_context] = lambda: StripeWebhookContext(
+        gateway=FakeStripeGateway(), webhook_secret="whsec_test"
+    )
+    try:
+        authorized_id, authorized_ref = _sca_payment(
+            client, airports, f"pi_signed_auth_{uuid4().hex[:10]}"
+        )
+        authorize_correlation = _operation_correlation(
+            authorized_id, PaymentOperationType.AUTHORIZE
+        )
+        _post_signed_payment_event(
+            client,
+            event_type="payment_intent.amount_capturable_updated",
+            provider_reference=authorized_ref,
+            correlation=authorize_correlation,
+            status="requires_capture",
+        )
+
+        capture_correlation = _reserve_operation(authorized_id, PaymentOperationType.CAPTURE)
+        _post_signed_payment_event(
+            client,
+            event_type="payment_intent.succeeded",
+            provider_reference=authorized_ref,
+            correlation=capture_correlation,
+            status="succeeded",
+        )
+        with SessionLocal() as session:
+            captured = _payment_row(session, authorized_id)
+            assert captured.status is PaymentStatus.CAPTURED
+            assert captured.captured_amount_minor == captured.authorized_amount_minor
+
+        void_id, void_ref = _sca_payment(client, airports, f"pi_signed_void_{uuid4().hex[:10]}")
+        _post_signed_payment_event(
+            client,
+            event_type="payment_intent.amount_capturable_updated",
+            provider_reference=void_ref,
+            correlation=_operation_correlation(void_id, PaymentOperationType.AUTHORIZE),
+            status="requires_capture",
+        )
+        void_correlation = _reserve_operation(void_id, PaymentOperationType.VOID)
+        _post_signed_payment_event(
+            client,
+            event_type="payment_intent.canceled",
+            provider_reference=void_ref,
+            correlation=void_correlation,
+            status="canceled",
+        )
+        with SessionLocal() as session:
+            cancelled = _payment_row(session, void_id)
+            assert cancelled.status is PaymentStatus.CANCELLED
+            assert cancelled.captured_amount_minor == 0
+            assert cancelled.refunded_amount_minor == 0
+
+        failed_id, failed_ref = _sca_payment(
+            client, airports, f"pi_signed_failed_{uuid4().hex[:10]}"
+        )
+        _post_signed_payment_event(
+            client,
+            event_type="payment_intent.payment_failed",
+            provider_reference=failed_ref,
+            correlation=_operation_correlation(failed_id, PaymentOperationType.AUTHORIZE),
+            status="requires_payment_method",
+        )
+        with SessionLocal() as session:
+            failed = _payment_row(session, failed_id)
+            assert failed.status is PaymentStatus.AUTHORIZATION_FAILED
+    finally:
+        app.dependency_overrides.pop(get_stripe_webhook_context, None)
+
+
+@requires_db
+def test_signed_webhook_wrong_operation_correlation_fails_closed(
+    client: TestClient, airports: list
+) -> None:
+    payment_id, provider_ref = _sca_payment(client, airports, f"pi_signed_wrong_{uuid4().hex[:10]}")
+    wrong_correlation = _reserve_operation(payment_id, PaymentOperationType.CAPTURE)
+    with SessionLocal() as session:
+        before = _payment_row(session, payment_id)
+        before_state = (
+            before.status,
+            before.authorized_amount_minor,
+            before.captured_amount_minor,
+            before.provider_payment_reference,
+            before.requires_customer_action,
+        )
+
+    app.dependency_overrides[get_stripe_webhook_context] = lambda: StripeWebhookContext(
+        gateway=FakeStripeGateway(), webhook_secret="whsec_test"
+    )
+    try:
+        _post_signed_payment_event(
+            client,
+            event_type="payment_intent.amount_capturable_updated",
+            provider_reference=provider_ref,
+            correlation=wrong_correlation,
+            status="requires_capture",
+        )
+    finally:
+        app.dependency_overrides.pop(get_stripe_webhook_context, None)
+
+    with SessionLocal() as session:
+        after = _payment_row(session, payment_id)
+        assert (
+            after.status,
+            after.authorized_amount_minor,
+            after.captured_amount_minor,
+            after.provider_payment_reference,
+            after.requires_customer_action,
+        ) == before_state
+        operation = session.scalar(
+            select(PaymentOperation).where(
+                PaymentOperation.correlation_id == UUID(wrong_correlation)
+            )
+        )
+        assert operation is not None
+        assert operation.result is PaymentOperationResult.UNKNOWN

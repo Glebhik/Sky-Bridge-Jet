@@ -177,10 +177,13 @@ def test_concurrent_customer_initiation_authorizes_once(
     for thread in threads:
         thread.join()
 
-    # The Booking lock serializes both callers. The winner authorizes; the waiter
-    # refreshes the now-AUTHORIZED row and a genuinely unused fresh key receives the
-    # canonical authoritative no-op. Both paths still persist one AUTHORIZE operation.
-    assert sorted(outcomes) == ["AUTHORIZED", "AUTHORIZED"]
+    # The Booking lock serializes durable reservation. A caller arriving while the
+    # winner is outside the transaction may observe the still-factual CREATED state;
+    # it must never dispatch a second logical authorization operation.
+    if same_key:
+        assert sorted(outcomes) == ["AUTHORIZED", "AUTHORIZED"]
+    else:
+        assert sorted(outcomes) in (["AUTHORIZED", "AUTHORIZED"], ["AUTHORIZED", "CREATED"])
     with SessionLocal() as session:
         payments = session.query(Payment).filter(Payment.booking_id == booking_id).all()
         assert len(payments) == 1
@@ -255,12 +258,15 @@ def test_concurrent_capture_captures_once(
     for thread in threads:
         thread.join()
 
-    assert sorted(outcomes) == ["captured", "conflict"]
+    # The waiter may receive the already-CAPTURED authoritative no-op after the
+    # winner finalizes; either response is safe only if one logical capture exists.
+    assert sorted(outcomes) in (["captured", "conflict"], ["captured", "captured"])
     with SessionLocal() as session:
         payment = session.get(Payment, payment_id)
         assert payment is not None
         assert payment.status is PaymentStatus.CAPTURED
         assert payment.captured_amount_minor == total  # captured exactly once
+        assert sum(operation.operation.value == "CAPTURE" for operation in payment.operations) == 1
 
 
 def test_capture_versus_void_race_single_winner(

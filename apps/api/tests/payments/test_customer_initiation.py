@@ -33,6 +33,7 @@ SAFE_KEYS = {
     "cancelled_at",
     "created_at",
     "updated_at",
+    "client_action",
 }
 
 
@@ -65,6 +66,7 @@ def test_customer_initiates_own_pending_booking_safely(
     assert body["authorized_amount_minor"] == body["total_amount_minor"]
     assert body["captured_amount_minor"] == 0
     assert body["refunded_amount_minor"] == 0
+    assert body["client_action"] is None
     assert (
         client.get(f"/api/v1/trip-requests/{scenario['trip']['id']}").json()["status"]
         == "SUBMITTED"

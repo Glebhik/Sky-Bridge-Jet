@@ -168,6 +168,10 @@ class RealStripeGateway:
             "currency": currency.lower(),
             "capture_method": "manual",
             "confirm": payment_method_reference is not None,
+            "automatic_payment_methods": {"enabled": True},
+            # Opaque operation correlation only: no customer, passenger, or
+            # commercial-detail metadata crosses the provider boundary.
+            "metadata": {"operation_correlation": idempotency_key},
         }
         if payment_method_reference is not None:
             params["payment_method"] = payment_method_reference
