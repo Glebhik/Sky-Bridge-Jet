@@ -100,6 +100,20 @@ ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
     _p("GET", "/api/v1/me/operator-bookings", _AB, "operator", "Phase 9.5.B pending queue"),
     _p(
         "GET",
+        "/api/v1/me/operator-bookings/history",
+        _AB,
+        "operator",
+        "Phase 9.7.B0 bounded active-operator Booking history",
+    ),
+    _p(
+        "GET",
+        "/api/v1/me/operator-bookings/{booking_id}",
+        _AB,
+        "operator",
+        "Phase 9.7.B0 active-operator-safe Booking detail",
+    ),
+    _p(
+        "GET",
         "/api/v1/me/operator-opportunities",
         _AB,
         "operator",

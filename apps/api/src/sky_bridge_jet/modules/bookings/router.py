@@ -14,13 +14,14 @@ from sky_bridge_jet.modules.audience import (
     CustomerBookingResponse,
     InternalBookingResponse,
 )
-from sky_bridge_jet.modules.bookings.domain import BookingConflictError
+from sky_bridge_jet.modules.bookings.domain import BookingConflictError, BookingStatus
 from sky_bridge_jet.modules.bookings.schemas import (
     BookingCancel,
     BookingConfirm,
     BookingCreate,
     BookingReject,
     BookingResponse,
+    OperatorBookingReadView,
     OperatorBookingView,
 )
 from sky_bridge_jet.modules.bookings.services import BookingService
@@ -176,6 +177,47 @@ def list_my_operator_bookings(
     return BookingService(session).list_pending_for_operator(
         operator_id, limit=limit, offset=offset
     )
+
+
+@router.get(
+    "/me/operator-bookings/history",
+    response_model=list[OperatorBookingReadView],
+    responses={403: _ERR},
+    operation_id="listMyOperatorBookingHistory",
+)
+def list_my_operator_booking_history(
+    principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
+    session: DatabaseSession,
+    limit: Limit = 20,
+    offset: Offset = 0,
+    booking_status: Annotated[BookingStatus | None, Query(alias="status")] = None,
+) -> list[OperatorBookingReadView]:
+    operator_id = access.active_operator_id(principal, active_organization)
+    access.require_operator_access(principal, Permission.BOOKING_READ, operator_id)
+    return BookingService(session).list_history_for_operator(
+        operator_id,
+        booking_status=booking_status,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
+    "/me/operator-bookings/{booking_id}",
+    response_model=OperatorBookingReadView,
+    responses={403: _ERR, 404: _ERR},
+    operation_id="getMyOperatorBooking",
+)
+def get_my_operator_booking(
+    booking_id: UUID,
+    principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
+    session: DatabaseSession,
+) -> OperatorBookingReadView:
+    operator_id = access.active_operator_id(principal, active_organization)
+    access.require_operator_access(principal, Permission.BOOKING_READ, operator_id)
+    return BookingService(session).get_for_operator(booking_id, operator_id)
 
 
 @router.post(

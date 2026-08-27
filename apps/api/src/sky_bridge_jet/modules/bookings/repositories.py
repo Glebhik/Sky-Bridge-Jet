@@ -59,6 +59,31 @@ class BookingRepository:
         )
         return list(self.session.scalars(statement))
 
+    def list_history_for_operator(
+        self,
+        operator_id: UUID,
+        *,
+        booking_status: BookingStatus | None,
+        limit: int,
+        offset: int,
+    ) -> list[Booking]:
+        statement = select(Booking).where(Booking.operator_id == operator_id)
+        if booking_status is not None:
+            statement = statement.where(Booking.status == booking_status)
+        statement = (
+            statement.order_by(Booking.created_at.desc(), Booking.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(self.session.scalars(statement))
+
+    def get_for_operator(self, booking_id: UUID, operator_id: UUID) -> Booking | None:
+        statement = select(Booking).where(
+            Booking.id == booking_id,
+            Booking.operator_id == operator_id,
+        )
+        return self.session.scalar(statement)
+
     def list_leg_rows(
         self, trip_request_ids: list[UUID]
     ) -> list[tuple[UUID, int, str, str, datetime, int]]:
