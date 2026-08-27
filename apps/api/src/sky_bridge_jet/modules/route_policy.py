@@ -98,6 +98,13 @@ ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
     # ---- Authenticated self / Phase 8 bound -------------------------------
     _p("GET", "/api/v1/auth/me", _AB, "self"),
     _p("GET", "/api/v1/me/operator-bookings", _AB, "operator", "Phase 9.5.B pending queue"),
+    _p(
+        "GET",
+        "/api/v1/me/operator-opportunities",
+        _AB,
+        "operator",
+        "Phase 9.7.A0 admitted marketplace opportunity projection",
+    ),
     _p("POST", "/api/v1/auth/logout", _AB, "self"),
     _p("POST", "/api/v1/auth/logout-all", _AB, "self"),
     _p("POST", "/api/v1/auth/invitations/accept", _AB, "invited-self"),

@@ -24,6 +24,7 @@ from sky_bridge_jet.modules.core_aviation.domain import (
     validate_timezone,
     validate_trip_leg,
 )
+from sky_bridge_jet.modules.offers.domain import EffectiveOfferStatus
 
 ShortText = Annotated[str, Field(min_length=1, max_length=200)]
 
@@ -307,6 +308,33 @@ class TripRequestResponse(ApiModel):
     requirements: TripRequirementsResponse
     created_at: datetime
     updated_at: datetime
+
+
+class OperatorOpportunityLegResponse(ApiModel):
+    """Commercially necessary route facts without passenger/customer identity."""
+
+    sequence: int
+    origin_airport_code: str
+    destination_airport_code: str
+    departure_at: datetime
+    passenger_count: int
+
+
+class OperatorOpportunityOwnOfferResponse(ApiModel):
+    """One offer owned by the active operator; foreign offers are never projected."""
+
+    offer_id: UUID
+    status: EffectiveOfferStatus
+
+
+class OperatorOpportunityResponse(ApiModel):
+    """Minimal marketplace opportunity projection for an admitted operator."""
+
+    trip_request_id: UUID
+    status: TripRequestStatus
+    legs: list[OperatorOpportunityLegResponse]
+    own_offers: list[OperatorOpportunityOwnOfferResponse]
+    created_at: datetime
 
 
 class VersionedTripCommand(ApiModel):

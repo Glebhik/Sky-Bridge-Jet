@@ -4,7 +4,7 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -27,6 +27,7 @@ from sky_bridge_jet.modules.core_aviation.schemas import (
     CustomerResponse,
     ErrorResponse,
     OperatorCreate,
+    OperatorOpportunityResponse,
     OperatorResponse,
     PassengerCreate,
     PassengerResponse,
@@ -50,6 +51,7 @@ from sky_bridge_jet.modules.iam.dependencies import (
     require_permission,
 )
 from sky_bridge_jet.modules.iam.domain import Permission
+from sky_bridge_jet.modules.opportunities import OperatorOpportunityService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["core-aviation"])
@@ -61,6 +63,9 @@ _REQUIRE_CUSTOMER_ADMIN = require_permission(Permission.ADMIN_ORGANIZATIONS_MANA
 # Phase 9.0.A-2 (B2): operator onboarding is a controlled platform-admin action; no
 # separate operator-onboarding permission is introduced.
 _REQUIRE_OPERATOR_ADMIN = require_permission(Permission.ADMIN_ORGANIZATIONS_MANAGE)
+
+OpportunityLimit = Annotated[int, Query(ge=1, le=100)]
+OpportunityOffset = Annotated[int, Query(ge=0)]
 
 
 def _route_operation(request: Request) -> str:
@@ -427,6 +432,27 @@ def get_operator(
         correlation_id=getattr(request.state, "correlation_id", None),
     )
     return response
+
+
+@router.get(
+    "/me/operator-opportunities",
+    response_model=list[OperatorOpportunityResponse],
+    responses={403: {"model": ErrorResponse}},
+    operation_id="listMyOperatorOpportunities",
+)
+def list_my_operator_opportunities(
+    principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
+    session: DatabaseSession,
+    limit: OpportunityLimit = 20,
+    offset: OpportunityOffset = 0,
+) -> list[OperatorOpportunityResponse]:
+    """List safe marketplace opportunities for the validated active operator."""
+    operator_id = access.active_operator_id(principal, active_organization)
+    access.require_operator_access(principal, Permission.OFFER_READ, operator_id)
+    return OperatorOpportunityService(session).list_for_operator(
+        operator_id, limit=limit, offset=offset
+    )
 
 
 @router.post(
