@@ -198,6 +198,49 @@ describe("Phase 9.5.B operator decisions — exact closed surface", () => {
   });
 });
 
+describe("Phase 9.7.B operator Booking reads — exact closed surface", () => {
+  const BOOKING = "11111111-2222-4333-8444-555555555555";
+
+  it("allows only GET history and GET canonical UUID detail", () => {
+    expect(
+      validateProxyRequest(["me", "operator-bookings", "history"], "GET"),
+    ).toMatchObject({ ok: true, path: "me/operator-bookings/history" });
+    expect(
+      validateProxyRequest(["me", "operator-bookings", BOOKING], "GET"),
+    ).toMatchObject({ ok: true, path: `me/operator-bookings/${BOOKING}` });
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+      expect(
+        validateProxyRequest(["me", "operator-bookings", "history"], method),
+      ).toMatchObject({ ok: false, status: 405 });
+      expect(
+        validateProxyRequest(["me", "operator-bookings", BOOKING], method),
+      ).toMatchObject({ ok: false, status: 405 });
+    }
+  });
+
+  it("rejects malformed, missing, extended, encoded and adjacent internal paths", () => {
+    for (const path of [
+      ["me", "operator-bookings", "bad"],
+      ["me", "operator-bookings", BOOKING, "extra"],
+      ["me", "operator-bookings", `${BOOKING}%2fextra`],
+      ["me", "operator-bookings", ".."],
+      ["me", "operator-bookings-history"],
+      ["bookings", BOOKING],
+      ["me", "bookings", BOOKING],
+      ["payments", BOOKING],
+      ["payments", BOOKING, "capture"],
+      ["payments", BOOKING, "void"],
+      ["payments", BOOKING, "refund"],
+      ["payments", BOOKING, "refunds"],
+      ["webhooks", "stripe"],
+      ["offers", BOOKING, "submit"],
+    ])
+      expect(validateProxyRequest(path, "GET")).toMatchObject({
+        ok: false,
+      });
+  });
+});
+
 describe("Phase 9.6.A customer Payment initiation — exact closed surface", () => {
   const BOOKING = "11111111-2222-4333-8444-555555555555";
   const exact = ["bookings", BOOKING, "payment", "initiate"];
