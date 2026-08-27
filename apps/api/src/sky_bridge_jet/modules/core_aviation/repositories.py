@@ -83,6 +83,18 @@ class AircraftRepository:
     def get(self, aircraft_id: UUID) -> Aircraft | None:
         return self.session.get(Aircraft, aircraft_id)
 
+    def list_for_operator(
+        self, operator_id: UUID, *, limit: int, offset: int
+    ) -> Sequence[Aircraft]:
+        statement = (
+            select(Aircraft)
+            .where(Aircraft.operator_id == operator_id)
+            .order_by(Aircraft.registration.asc(), Aircraft.id.asc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return self.session.scalars(statement).all()
+
 
 class TripRequestRepository:
     def __init__(self, session: Session) -> None:

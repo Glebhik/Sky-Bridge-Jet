@@ -214,6 +214,19 @@ class AircraftResponse(ApiModel):
     updated_at: datetime
 
 
+class OperatorAircraftResponse(ApiModel):
+    """Minimal active-operator aircraft choice; ownership remains server-side."""
+
+    id: UUID
+    registration: str
+    manufacturer: str
+    model: str
+    category: AircraftCategory
+    passenger_capacity: int
+    status: AircraftStatus
+    eligible: bool
+
+
 class PetRequirementCreate(ApiModel):
     pet_type: PetType
     approximate_weight_kg: Annotated[Decimal, Field(gt=0, le=200)] | None = None

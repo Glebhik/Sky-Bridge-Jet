@@ -32,8 +32,30 @@ def _validate_optional_aware(value: datetime | None) -> datetime | None:
 
 
 class OperatorOfferCreate(ApiModel):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
     trip_request_id: UUID
     operator_id: UUID
+    aircraft_id: UUID
+    currency: Annotated[str, Field(max_length=3)]
+    operator_amount_minor: MinorAmount
+    tax_amount_minor: MinorAmount = 0
+    valid_until: datetime | None = None
+    operator_notes: ShortNote | None = None
+    cancellation_policy: ShortNote | None = None
+    included_services: ServiceNote | None = None
+    excluded_services: ServiceNote | None = None
+
+    _currency = field_validator("currency")(_validate_currency)
+    _valid_until = field_validator("valid_until")(_validate_optional_aware)
+
+
+class ActiveOperatorOfferCreate(ApiModel):
+    """Browser-safe Offer command; the active organization supplies its operator."""
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    trip_request_id: UUID
     aircraft_id: UUID
     currency: Annotated[str, Field(max_length=3)]
     operator_amount_minor: MinorAmount
