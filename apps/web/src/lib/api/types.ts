@@ -259,6 +259,15 @@ export interface CustomerPaymentInitiateRequest {
   readonly idempotency_key: string;
 }
 
+export interface CustomerPaymentClientAction {
+  readonly action_type: "stripe_confirm_payment";
+  readonly client_secret: string;
+}
+
+export interface CustomerPaymentInitiation extends CustomerPayment {
+  readonly client_action?: CustomerPaymentClientAction | null;
+}
+
 /**
  * Phase 9.3.B — customer *write* request contracts.
  *

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import secrets
+import hashlib
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
@@ -39,7 +39,7 @@ class PaymentProviderError(Exception):
 
 @dataclass(frozen=True)
 class ClientAction:
-    """Safe, non-secret-free client-action metadata for a customer to complete (SCA).
+    """Transient browser-required client action for a customer to complete (SCA).
 
     The ``client_secret`` is required by the provider's client SDK to complete the
     action; it is returned once to the client and never persisted or logged.
@@ -115,8 +115,9 @@ class FakePaymentProvider:
 
     kind = PaymentProviderKind.FAKE
 
-    def _reference(self, marker: str) -> str:
-        return f"fauth_{marker}_{secrets.token_hex(8)}"
+    def _reference(self, marker: str, idempotency_key: str) -> str:
+        digest = hashlib.sha256(idempotency_key.encode()).hexdigest()[:16]
+        return f"fauth_{marker}_{digest}"
 
     def authorize(
         self,
@@ -133,15 +134,17 @@ class FakePaymentProvider:
                 failure_code="authorization_declined",
             )
         if payment_method_reference == DECLINE_CAPTURE:
-            reference = self._reference(_CAPTURE_FAIL_MARKER)
+            reference = self._reference(_CAPTURE_FAIL_MARKER, idempotency_key)
         elif payment_method_reference == DECLINE_CAPTURE_AND_VOID:
-            reference = self._reference(f"{_CAPTURE_FAIL_MARKER}_{_VOID_FAIL_MARKER}")
+            reference = self._reference(
+                f"{_CAPTURE_FAIL_MARKER}_{_VOID_FAIL_MARKER}", idempotency_key
+            )
         elif payment_method_reference == DECLINE_VOID:
-            reference = self._reference(_VOID_FAIL_MARKER)
+            reference = self._reference(_VOID_FAIL_MARKER, idempotency_key)
         elif payment_method_reference == DECLINE_REFUND:
-            reference = self._reference(_REFUND_FAIL_MARKER)
+            reference = self._reference(_REFUND_FAIL_MARKER, idempotency_key)
         else:
-            reference = self._reference("OK")
+            reference = self._reference("OK", idempotency_key)
         return ProviderResult(outcome=ProviderOutcome.SUCCEEDED, provider_reference=reference)
 
     def capture(
@@ -181,7 +184,7 @@ class FakePaymentProvider:
             )
         return ProviderResult(
             outcome=ProviderOutcome.SUCCEEDED,
-            provider_reference=f"fref_{secrets.token_hex(8)}",
+            provider_reference=f"fref_{hashlib.sha256(idempotency_key.encode()).hexdigest()[:16]}",
         )
 
 

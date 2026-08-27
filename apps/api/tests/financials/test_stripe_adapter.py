@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from sky_bridge_jet.core.stripe_gateway import RealStripeGateway
 from sky_bridge_jet.modules.financials.domain import OnboardingStatus
 from sky_bridge_jet.modules.financials.provider import StripeConnectFinancialProvider
 from sky_bridge_jet.modules.payments.provider import (
@@ -48,6 +49,60 @@ def test_authorize_requires_action_returns_client_action() -> None:
     assert result.client_action.client_secret == "pi_secret_abc"
     # Idempotency keys are namespaced per operation.
     assert ("create_payment_intent", "authorize:k2") in gateway.calls
+
+
+def test_unconfirmed_payment_element_intent_returns_client_action() -> None:
+    provider = StripeConnectPaymentProvider(
+        FakeStripeGateway(
+            intent_status="requires_payment_method", client_secret="pi_secret_element"
+        )
+    )
+    result = provider.authorize(
+        amount_minor=1000,
+        currency="EUR",
+        payment_method_reference=None,
+        idempotency_key="k-element",
+    )
+    assert result.outcome is ProviderOutcome.REQUIRES_ACTION
+    assert result.client_action is not None
+    assert result.client_action.client_secret == "pi_secret_element"
+
+
+def test_real_gateway_uses_manual_capture_minimal_metadata_and_test_element_setup() -> None:
+    captured: dict[str, object] = {}
+
+    class Intent:
+        id = "pi_test_local"
+        status = "requires_payment_method"
+        client_secret = "pi_secret_local"
+
+    class PaymentIntent:
+        @staticmethod
+        def create(**kwargs: object) -> Intent:
+            captured.update(kwargs)
+            return Intent()
+
+    LocalStripe = type("LocalStripe", (), {"PaymentIntent": PaymentIntent})
+
+    gateway = RealStripeGateway("sk_test_local_only")
+    gateway._call = lambda fn: fn(LocalStripe)  # type: ignore[method-assign]
+    view = gateway.create_payment_intent(
+        amount_minor=1234,
+        currency="EUR",
+        payment_method_reference=None,
+        idempotency_key="opaque-correlation",
+    )
+
+    assert view.status == "requires_payment_method"
+    assert captured == {
+        "idempotency_key": "opaque-correlation",
+        "amount": 1234,
+        "currency": "eur",
+        "capture_method": "manual",
+        "confirm": False,
+        "automatic_payment_methods": {"enabled": True},
+        "metadata": {"operation_correlation": "opaque-correlation"},
+    }
 
 
 def test_authorize_declined_maps_to_failed_result() -> None:

@@ -4,7 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { portalApi } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
-import type { CustomerPayment } from "@/lib/api/types";
+import type {
+  CustomerPayment,
+  CustomerPaymentClientAction,
+} from "@/lib/api/types";
 
 export type PaymentActionMessage =
   | { readonly kind: "unknown"; readonly text: string }
@@ -42,11 +45,13 @@ export function useCustomerPayments(
   readonly state: CustomerPaymentState;
   readonly pendingBookingId: string | null;
   readonly messages: Readonly<Record<string, PaymentActionMessage>>;
+  readonly clientActions: Readonly<Record<string, CustomerPaymentClientAction>>;
   readonly refresh: () => Promise<void>;
   readonly authorize: (
     bookingId: string,
     retrySameAttempt?: boolean,
   ) => Promise<void>;
+  readonly completeClientAction: (bookingId: string) => Promise<void>;
 } {
   const identity = `${organizationId ?? "none"}:${bookingIds.join(",")}`;
   const [state, setState] = useState<CustomerPaymentState>({
@@ -55,6 +60,9 @@ export function useCustomerPayments(
   const [pendingBookingId, setPendingBookingId] = useState<string | null>(null);
   const [messages, setMessages] = useState<
     Readonly<Record<string, PaymentActionMessage>>
+  >({});
+  const [clientActions, setClientActions] = useState<
+    Readonly<Record<string, CustomerPaymentClientAction>>
   >({});
   const identityRef = useRef(identity);
   const generationRef = useRef(0);
@@ -72,6 +80,7 @@ export function useCustomerPayments(
     attemptsRef.current.clear();
     setPendingBookingId(null);
     setMessages({});
+    setClientActions({});
 
     if (!enabled || organizationId === null || bookingIds.length === 0) {
       setState({ status: "loading" });
@@ -106,7 +115,9 @@ export function useCustomerPayments(
         )
           return;
         const resolvedBookingIds = new Set(
-          payments.map((payment) => payment.booking_id),
+          payments
+            .filter((payment) => !payment.requires_customer_action)
+            .map((payment) => payment.booking_id),
         );
         for (const bookingId of resolvedBookingIds)
           attemptsRef.current.delete(bookingId);
@@ -195,6 +206,12 @@ export function useCustomerPayments(
           refreshing: false,
         }));
         attemptsRef.current.delete(bookingId);
+        if (payment.client_action) {
+          setClientActions((current) => ({
+            ...current,
+            [bookingId]: payment.client_action!,
+          }));
+        }
       } catch (error) {
         if (
           identityRef.current !== identity ||
@@ -246,9 +263,34 @@ export function useCustomerPayments(
     [identity, organizationId],
   );
 
+  const completeClientAction = useCallback(async (bookingId: string) => {
+    setClientActions((current) => {
+      const next = { ...current };
+      delete next[bookingId];
+      return next;
+    });
+    await refreshRef.current();
+  }, []);
+
   return useMemo(
-    () => ({ state, pendingBookingId, messages, refresh, authorize }),
-    [authorize, messages, pendingBookingId, refresh, state],
+    () => ({
+      state,
+      pendingBookingId,
+      messages,
+      clientActions,
+      refresh,
+      authorize,
+      completeClientAction,
+    }),
+    [
+      authorize,
+      clientActions,
+      completeClientAction,
+      messages,
+      pendingBookingId,
+      refresh,
+      state,
+    ],
   );
 }
 

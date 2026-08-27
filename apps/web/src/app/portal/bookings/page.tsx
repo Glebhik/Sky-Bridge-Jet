@@ -189,6 +189,10 @@ export default function PortalBookingsPage() {
                       onAuthorize={() => payments.authorize(booking.id)}
                       onRetrySame={() => payments.authorize(booking.id, true)}
                       onRefresh={payments.refresh}
+                      clientAction={payments.clientActions[booking.id]}
+                      onClientActionComplete={() =>
+                        payments.completeClientAction(booking.id)
+                      }
                     />
                   </Card>
                 </li>

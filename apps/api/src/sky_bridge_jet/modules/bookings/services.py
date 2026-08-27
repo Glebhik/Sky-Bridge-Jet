@@ -158,12 +158,12 @@ class BookingService:
             booking.operator_confirmation_reference = data.confirmation_reference
             booking.confirmation_note = data.note
             self.session.flush()
-            from sky_bridge_jet.modules.payments.services import PaymentService
-
-            PaymentService(self.session).orchestrate_booking_transition(booking, "confirm:capture")
             if on_commit is not None:
                 on_commit(self.session)
-            return booking
+        from sky_bridge_jet.modules.payments.services import PaymentService
+
+        PaymentService(self.session).orchestrate_booking_transition(booking, "confirm:capture")
+        return booking
 
     def reject(
         self, booking_id: UUID, data: BookingReject, *, on_commit: OnCommit = None
@@ -181,12 +181,12 @@ class BookingService:
             booking.rejection_reason = data.reason
             booking.rejection_note = data.note
             self.session.flush()
-            from sky_bridge_jet.modules.payments.services import PaymentService
-
-            PaymentService(self.session).orchestrate_booking_transition(booking, "reject:void")
             if on_commit is not None:
                 on_commit(self.session)
-            return booking
+        from sky_bridge_jet.modules.payments.services import PaymentService
+
+        PaymentService(self.session).orchestrate_booking_transition(booking, "reject:void")
+        return booking
 
     # -- Cancellation (customer / operator / platform) ----------------------
 
@@ -205,12 +205,12 @@ class BookingService:
             booking.cancellation_reason = data.reason
             booking.cancellation_note = data.note
             self.session.flush()
-            from sky_bridge_jet.modules.payments.services import PaymentService
-
-            PaymentService(self.session).orchestrate_booking_transition(booking, "cancel:void")
             if on_commit is not None:
                 on_commit(self.session)
-            return booking
+        from sky_bridge_jet.modules.payments.services import PaymentService
+
+        PaymentService(self.session).orchestrate_booking_transition(booking, "cancel:void")
+        return booking
 
     # -- Reads --------------------------------------------------------------
 

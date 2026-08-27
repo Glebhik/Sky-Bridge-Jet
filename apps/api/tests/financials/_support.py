@@ -83,7 +83,11 @@ class FakeStripeGateway:
         idempotency_key: str,
     ) -> StripePaymentIntentView:
         self.calls.append(("create_payment_intent", idempotency_key))
-        secret = self.client_secret if self.intent_status == "requires_action" else None
+        secret = (
+            self.client_secret
+            if self.intent_status in {"requires_action", "requires_payment_method"}
+            else None
+        )
         return StripePaymentIntentView(
             id=self.next_intent_id, status=self.intent_status, client_secret=secret
         )

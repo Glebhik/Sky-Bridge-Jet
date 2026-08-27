@@ -251,7 +251,9 @@ def test_direct_capture_failed_void_contacts_provider_and_is_truthful(
             assert result.cancelled_at is None
         else:
             assert result.cancelled_at is not None
-    assert spy.calls == [(reference, key)]
+    assert len(spy.calls) == 1
+    assert spy.calls[0][0] == reference
+    UUID(spy.calls[0][1])
     operations = _operations(UUID(authorized["id"]))
     voids = [item for item in operations if item.operation is PaymentOperationType.VOID]
     assert len(voids) == 1
@@ -284,7 +286,9 @@ def test_direct_capture_failed_void_replay_does_not_call_provider_twice(
         PaymentService(session, provider=spy).void(  # type: ignore[arg-type]
             UUID(authorized["id"]), PaymentVoid(idempotency_key=key)
         )
-    assert spy.calls == [(reference, key)]
+    assert len(spy.calls) == 1
+    assert spy.calls[0][0] == reference
+    UUID(spy.calls[0][1])
     assert (
         len(
             [

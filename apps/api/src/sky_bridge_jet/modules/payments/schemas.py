@@ -38,6 +38,13 @@ class CustomerPaymentInitiate(ApiModel):
     idempotency_key: IdempotencyKey
 
 
+class ClientActionResponse(ApiModel):
+    """Transient browser action; never persisted or included in read projections."""
+
+    action_type: str
+    client_secret: str
+
+
 class CustomerPaymentInitiateResponse(ApiModel):
     """Exact customer-safe result of initiating authorization for an owned booking."""
 
@@ -55,6 +62,7 @@ class CustomerPaymentInitiateResponse(ApiModel):
     cancelled_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    client_action: ClientActionResponse | None = None
 
 
 class PaymentCapture(ApiModel):
@@ -68,18 +76,6 @@ class PaymentVoid(ApiModel):
 class RefundCreate(ApiModel):
     idempotency_key: IdempotencyKey
     amount_minor: RefundAmount
-
-
-class ClientActionResponse(ApiModel):
-    """SCA challenge metadata for the client SDK to complete an action.
-
-    Returned once on the authorize response when the payment requires customer
-    action. The ``client_secret`` is provider-issued for the client SDK and is
-    never persisted or logged server-side.
-    """
-
-    action_type: str
-    client_secret: str
 
 
 class PaymentResponse(ApiModel):

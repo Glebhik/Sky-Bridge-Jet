@@ -4,6 +4,8 @@ import { useState } from "react";
 
 import { Alert, Button } from "@/components/ui/primitives";
 import type { CustomerBooking, CustomerPayment } from "@/lib/api/types";
+import type { CustomerPaymentClientAction } from "@/lib/api/types";
+import { StripePaymentElement } from "@/app/portal/bookings/stripe-payment-element";
 import { formatOfferMoney } from "@/lib/portal/offers";
 import type {
   CustomerPaymentState,
@@ -19,7 +21,7 @@ function paymentPresentation(payment: CustomerPayment): {
     return {
       title: "Additional verification required",
       detail:
-        "Payment authorization needs additional verification. No verification action is available here yet.",
+        "Payment authorization needs additional verification. Use the secure Stripe form when it is available below.",
       tone: "warning",
     };
   switch (payment.status) {
@@ -83,6 +85,8 @@ export function BookingPaymentSection({
   onAuthorize,
   onRetrySame,
   onRefresh,
+  clientAction,
+  onClientActionComplete = async () => undefined,
 }: {
   readonly booking: CustomerBooking;
   readonly discovery: CustomerPaymentState["status"];
@@ -92,6 +96,8 @@ export function BookingPaymentSection({
   readonly onAuthorize: () => Promise<void>;
   readonly onRetrySame: () => Promise<void>;
   readonly onRefresh: () => Promise<void>;
+  readonly clientAction?: CustomerPaymentClientAction;
+  readonly onClientActionComplete?: () => Promise<void>;
 }) {
   const [confirming, setConfirming] = useState(false);
   const bookingEligible =
@@ -145,6 +151,13 @@ export function BookingPaymentSection({
         >
           {message.text}
         </Alert>
+      ) : null}
+
+      {clientAction ? (
+        <StripePaymentElement
+          clientSecret={clientAction.client_secret}
+          onComplete={onClientActionComplete}
+        />
       ) : null}
 
       {confirming ? (

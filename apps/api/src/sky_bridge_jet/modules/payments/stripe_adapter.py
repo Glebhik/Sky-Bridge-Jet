@@ -22,6 +22,7 @@ from sky_bridge_jet.modules.payments.provider import (
 _AUTHORIZED_STATUS = "requires_capture"
 _CAPTURED_STATUS = "succeeded"
 _REQUIRES_ACTION_STATUS = "requires_action"
+_PAYMENT_ELEMENT_READY_STATUS = "requires_payment_method"
 _CANCELLED_STATUS = "canceled"
 _REFUND_OK_STATUSES = frozenset({"succeeded", "pending"})
 
@@ -58,9 +59,9 @@ class StripeConnectPaymentProvider:
                 )
             raise
 
-        if intent.status == _REQUIRES_ACTION_STATUS:
+        if intent.status in {_REQUIRES_ACTION_STATUS, _PAYMENT_ELEMENT_READY_STATUS}:
             action = (
-                ClientAction(action_type="stripe_handle_next_action", client_secret=secret)
+                ClientAction(action_type="stripe_confirm_payment", client_secret=secret)
                 if (secret := intent.client_secret) is not None
                 else None
             )

@@ -6,6 +6,7 @@ import type {
   CustomerBooking,
   CustomerOffer,
   CustomerPayment,
+  CustomerPaymentInitiation,
   CustomerPaymentInitiateRequest,
   CustomerTripRequest,
   LoginResponse,
@@ -323,12 +324,15 @@ export const portalApi = {
     organizationId: string,
     signal?: AbortSignal,
   ) =>
-    apiRequest<CustomerPayment>(`bookings/${bookingId}/payment/initiate`, {
-      method: "POST",
-      body,
-      organizationId,
-      signal,
-    }),
+    apiRequest<CustomerPaymentInitiation>(
+      `bookings/${bookingId}/payment/initiate`,
+      {
+        method: "POST",
+        body,
+        organizationId,
+        signal,
+      },
+    ),
   listOperatorBookings: (organizationId: string, signal?: AbortSignal) =>
     apiRequest<readonly OperatorBooking[]>("me/operator-bookings", {
       organizationId,
