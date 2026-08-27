@@ -20,6 +20,11 @@ import type {
   OperatorBooking,
   OperatorBookingDecisionResponse,
   BookingRejectionReason,
+  OperatorAircraft,
+  OperatorOffer,
+  OperatorOfferCommand,
+  OperatorOfferCreate,
+  OperatorOpportunity,
 } from "@/lib/api/types";
 
 /**
@@ -368,4 +373,65 @@ export const portalApi = {
         signal,
       },
     ),
+  listOperatorOpportunities: (organizationId: string, signal?: AbortSignal) =>
+    apiRequest<readonly OperatorOpportunity[]>("me/operator-opportunities", {
+      query: { limit: 100, offset: 0 },
+      organizationId,
+      signal,
+    }),
+  listOperatorAircraft: (organizationId: string, signal?: AbortSignal) =>
+    apiRequest<readonly OperatorAircraft[]>("me/operator-aircraft", {
+      query: { limit: 100, offset: 0 },
+      organizationId,
+      signal,
+    }),
+  createOperatorOffer: (
+    body: OperatorOfferCreate,
+    organizationId: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<OperatorOffer>("me/operator-offers", {
+      method: "POST",
+      body,
+      organizationId,
+      signal,
+    }),
+  getOperatorOffer: (
+    offerId: string,
+    organizationId: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<OperatorOffer>(`offers/${offerId}`, { organizationId, signal }),
+  updateOperatorOffer: (
+    offerId: string,
+    body: OperatorOfferCommand,
+    organizationId: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<OperatorOffer>(`offers/${offerId}`, {
+      method: "PATCH",
+      body,
+      organizationId,
+      signal,
+    }),
+  submitOperatorOffer: (
+    offerId: string,
+    organizationId: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<OperatorOffer>(`offers/${offerId}/submit`, {
+      method: "POST",
+      organizationId,
+      signal,
+    }),
+  withdrawOperatorOffer: (
+    offerId: string,
+    organizationId: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<OperatorOffer>(`offers/${offerId}/withdraw`, {
+      method: "POST",
+      organizationId,
+      signal,
+    }),
 };

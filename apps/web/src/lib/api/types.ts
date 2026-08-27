@@ -159,6 +159,83 @@ export interface OperatorBookingDecisionResponse {
   readonly status: OperatorBookingStatus;
 }
 
+export type OperatorOfferStatus =
+  | "DRAFT"
+  | "SUBMITTED"
+  | "SELECTED"
+  | "WITHDRAWN"
+  | "EXPIRED";
+
+export interface OperatorOpportunityLeg {
+  readonly sequence: number;
+  readonly origin_airport_code: string;
+  readonly destination_airport_code: string;
+  readonly departure_at: string;
+  readonly passenger_count: number;
+}
+
+export interface OperatorOpportunity {
+  readonly trip_request_id: string;
+  readonly status: "SUBMITTED";
+  readonly legs: readonly OperatorOpportunityLeg[];
+  readonly own_offers: readonly {
+    readonly offer_id: string;
+    readonly status: OperatorOfferStatus;
+  }[];
+  readonly created_at: string;
+}
+
+export interface OperatorAircraft {
+  readonly id: string;
+  readonly registration: string;
+  readonly manufacturer: string;
+  readonly model: string;
+  readonly category: string;
+  readonly passenger_capacity: number;
+  readonly status: string;
+  readonly eligible: boolean;
+}
+
+export interface OperatorOfferCommand {
+  readonly currency?: "EUR" | "GBP" | "USD";
+  readonly operator_amount_minor?: number;
+  readonly tax_amount_minor?: number;
+  readonly valid_until?: string | null;
+  readonly operator_notes?: string | null;
+  readonly cancellation_policy?: string | null;
+  readonly included_services?: string | null;
+  readonly excluded_services?: string | null;
+}
+
+export interface OperatorOfferCreate extends OperatorOfferCommand {
+  readonly trip_request_id: string;
+  readonly aircraft_id: string;
+  readonly currency: "EUR" | "GBP" | "USD";
+  readonly operator_amount_minor: number;
+}
+
+/** Operator workspace view. Components deliberately omit fee, customer total and payments. */
+export interface OperatorOffer {
+  readonly id: string;
+  readonly trip_request_id: string;
+  readonly aircraft_id: string;
+  readonly status: OperatorOfferStatus;
+  readonly currency: "EUR" | "GBP" | "USD";
+  readonly operator_amount_minor: number;
+  readonly tax_amount_minor: number;
+  readonly valid_until: string | null;
+  readonly aircraft_registration: string;
+  readonly aircraft_manufacturer: string;
+  readonly aircraft_model: string;
+  readonly aircraft_category: string;
+  readonly operator_notes: string | null;
+  readonly cancellation_policy: string | null;
+  readonly included_services: string | null;
+  readonly excluded_services: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
 /** One leg of a trip request (as returned by the customer trip-request read models). */
 export interface TripLeg {
   readonly id: string;

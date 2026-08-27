@@ -243,6 +243,54 @@ describe("portalApi — Phase 9.5.B operator decisions", () => {
   });
 });
 
+describe("portalApi — Phase 9.7.A operator Offer contracts", () => {
+  const OFFER = "11111111-2222-4333-8444-555555555555";
+  it("uses exact paths, active org, CSRF writes and no operator_id", async () => {
+    document.cookie = "sbj_csrf=csrf-97a";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() => Promise.resolve(jsonResponse([])));
+    await portalApi.listOperatorOpportunities("org-97a");
+    await portalApi.listOperatorAircraft("org-97a");
+    await portalApi.createOperatorOffer(
+      {
+        trip_request_id: "trip",
+        aircraft_id: "aircraft",
+        currency: "EUR",
+        operator_amount_minor: 12300,
+      },
+      "org-97a",
+    );
+    await portalApi.getOperatorOffer(OFFER, "org-97a");
+    await portalApi.updateOperatorOffer(
+      OFFER,
+      { operator_amount_minor: 12400 },
+      "org-97a",
+    );
+    await portalApi.submitOperatorOffer(OFFER, "org-97a");
+    await portalApi.withdrawOperatorOffer(OFFER, "org-97a");
+    expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/proxy/me/operator-opportunities?limit=100&offset=0",
+      "/api/proxy/me/operator-aircraft?limit=100&offset=0",
+      "/api/proxy/me/operator-offers",
+      `/api/proxy/offers/${OFFER}`,
+      `/api/proxy/offers/${OFFER}`,
+      `/api/proxy/offers/${OFFER}/submit`,
+      `/api/proxy/offers/${OFFER}/withdraw`,
+    ]);
+    for (const [, init] of fetchSpy.mock.calls)
+      expect((init?.headers as Headers).get("x-organization-id")).toBe(
+        "org-97a",
+      );
+    for (const [, init] of fetchSpy.mock.calls.filter(
+      ([, init]) => (init?.method ?? "GET") !== "GET",
+    )) {
+      expect((init?.headers as Headers).get("x-csrf-token")).toBe("csrf-97a");
+      expect(String(init?.body ?? "")).not.toContain("operator_id");
+    }
+  });
+});
+
 describe("portalApi — Phase 9.6.A customer Payment contracts", () => {
   const A = "11111111-2222-4333-8444-555555555555";
   const B = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
