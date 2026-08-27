@@ -227,9 +227,57 @@ export async function forwardToUpstream(
     // Network failure / DNS / connection refused: a controlled typed error, no leak.
     return upstreamUnavailableResponse();
   }
-  const body = await upstream.text();
+  let body = await upstream.text();
+  if (upstream.ok && isOperatorOfferPath(path) && body.length > 0) {
+    body = operatorSafeOfferBody(body);
+  }
   return new Response(body.length > 0 ? body : null, {
     status: upstream.status,
     headers: buildResponseHeaders(upstream),
   });
+}
+
+function isOperatorOfferPath(path: string): boolean {
+  return (
+    path === "me/operator-offers" ||
+    /^offers\/[0-9a-f-]+(?:\/(?:submit|withdraw))?$/i.test(path)
+  );
+}
+
+/** Remove internal/commercial split fields before an Offer response reaches browser network. */
+export function operatorSafeOfferBody(body: string): string {
+  let value: unknown;
+  try {
+    value = JSON.parse(body) as unknown;
+  } catch {
+    return body;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return body;
+  const source = value as Record<string, unknown>;
+  const allowed = [
+    "id",
+    "trip_request_id",
+    "aircraft_id",
+    "status",
+    "currency",
+    "operator_amount_minor",
+    "tax_amount_minor",
+    "valid_until",
+    "aircraft_registration",
+    "aircraft_manufacturer",
+    "aircraft_model",
+    "aircraft_category",
+    "operator_notes",
+    "cancellation_policy",
+    "included_services",
+    "excluded_services",
+    "created_at",
+    "updated_at",
+  ] as const;
+  return JSON.stringify(
+    Object.fromEntries(
+      allowed.filter((key) => key in source).map((key) => [key, source[key]]),
+    ),
+  );
 }

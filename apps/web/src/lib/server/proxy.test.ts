@@ -5,6 +5,7 @@ import {
   buildUpstreamHeaders,
   buildUpstreamUrl,
   forwardToUpstream,
+  operatorSafeOfferBody,
   validateProxyRequest,
 } from "@/lib/server/proxy";
 
@@ -236,6 +237,78 @@ describe("Phase 9.6.A customer Payment initiation — exact closed surface", () 
   });
 });
 
+describe("Phase 9.7.A operator offer management — exact closed surface", () => {
+  const OFFER = "11111111-2222-4333-8444-555555555555";
+  it("allows only the intended collections and offer commands", () => {
+    expect(
+      validateProxyRequest(["me", "operator-opportunities"], "GET"),
+    ).toMatchObject({ ok: true });
+    expect(
+      validateProxyRequest(["me", "operator-aircraft"], "GET"),
+    ).toMatchObject({ ok: true });
+    expect(
+      validateProxyRequest(["me", "operator-offers"], "POST"),
+    ).toMatchObject({ ok: true });
+    expect(validateProxyRequest(["offers", OFFER], "GET")).toMatchObject({
+      ok: true,
+    });
+    expect(validateProxyRequest(["offers", OFFER], "PATCH")).toMatchObject({
+      ok: true,
+    });
+    expect(
+      validateProxyRequest(["offers", OFFER, "submit"], "POST"),
+    ).toMatchObject({ ok: true });
+    expect(
+      validateProxyRequest(["offers", OFFER, "withdraw"], "POST"),
+    ).toMatchObject({ ok: true });
+  });
+  it("rejects adjacent methods, malformed identifiers, extra paths, payments and admin", () => {
+    for (const [path, method] of [
+      [["me", "operator-opportunities"], "POST"],
+      [["me", "operator-aircraft"], "POST"],
+      [["me", "operator-offers"], "GET"],
+      [["offers", "bad"], "GET"],
+      [["offers", OFFER, "delete"], "POST"],
+      [["offers", OFFER, "submit", "extra"], "POST"],
+      [["offers", `${OFFER}%2fextra`], "GET"],
+      [["payments", OFFER, "capture"], "POST"],
+      [["admin", "offers"], "GET"],
+      [["operators", OFFER, "aircraft"], "GET"],
+    ] as const)
+      expect(validateProxyRequest([...path], method)).toMatchObject({
+        ok: false,
+      });
+  });
+  it("strips operator identity, platform fee, customer total and provider data", () => {
+    const body = operatorSafeOfferBody(
+      JSON.stringify({
+        id: OFFER,
+        trip_request_id: "trip",
+        aircraft_id: "aircraft",
+        status: "DRAFT",
+        currency: "EUR",
+        operator_amount_minor: 10000,
+        tax_amount_minor: 100,
+        platform_fee_minor: 500,
+        total_amount_minor: 10600,
+        operator_id: "operator",
+        provider_payment_id: "secret",
+        operator_notes: null,
+      }),
+    );
+    expect(JSON.parse(body)).toEqual({
+      id: OFFER,
+      trip_request_id: "trip",
+      aircraft_id: "aircraft",
+      status: "DRAFT",
+      currency: "EUR",
+      operator_amount_minor: 10000,
+      tax_amount_minor: 100,
+      operator_notes: null,
+    });
+  });
+});
+
 describe("Phase 9.2.A auth account-entry routes — exact allow-list", () => {
   // Every newly allow-listed path (including the two-segment resend and reset/confirm)
   // forwards on POST, rejects other methods with 405, and no `auth/*` wildcard leaks.
@@ -363,14 +436,8 @@ describe("Phase 9.3.A parameterized reads — closed pattern allow-list", () => 
   });
 
   it("does not turn other {id} families into a passthrough or collide on prefixes", () => {
-    // Only trip-requests and airports are parameterized; nothing else is.
-    for (const family of [
-      "bookings",
-      "payments",
-      "offers",
-      "customers",
-      "operators",
-    ]) {
+    // Phase 9.3 families remain closed; Phase 9.7.A separately tests its exact offer seam.
+    for (const family of ["bookings", "payments", "customers", "operators"]) {
       expect(validateProxyRequest([family, UUID], "GET")).toMatchObject({
         ok: false,
         status: 404,

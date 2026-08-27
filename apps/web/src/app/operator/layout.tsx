@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
+import Link from "next/link";
 
 import { Alert, Container } from "@/components/ui/primitives";
 import { buildLoginRedirect } from "@/lib/auth/redirect";
@@ -48,6 +49,10 @@ export default async function OperatorLayout({
         <div className="operator__grid" />
         <div className="operator__glow" />
       </div>
+      <nav className="operator-nav" aria-label="Operator workspace">
+        <Link href="/operator/opportunities">Opportunities</Link>
+        <Link href="/operator/bookings">Bookings</Link>
+      </nav>
       {children}
     </main>
   );
