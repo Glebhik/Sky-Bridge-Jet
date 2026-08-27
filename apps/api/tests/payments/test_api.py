@@ -106,14 +106,12 @@ def test_capture_requires_confirmed_booking(
     assert early.status_code == 409
     assert early.json()["error"]["code"] == "payment_not_allowed"
 
-    # Confirm the booking, then capture succeeds.
+    # Confirming the booking now performs the trusted capture consequence.
     client.post(
         f"/api/v1/bookings/{scenario['booking']['id']}/confirm",
         json={"operator_id": scenario["operator"]["id"]},
     )
-    captured = capture(client, payment["id"])
-    assert captured.status_code == 200, captured.text
-    body = captured.json()
+    body = client.get(f"/api/v1/payments/{payment['id']}").json()
     assert body["status"] == "CAPTURED"
     assert body["captured_amount_minor"] == body["total_amount_minor"]
     assert body["captured_at"] is not None
@@ -139,7 +137,7 @@ def test_capture_failure_then_retry(client: TestClient, airports: list[dict[str,
     assert failed.json()["status"] == "CAPTURE_FAILED"
 
 
-def test_booking_rejection_after_authorization_blocks_capture_allows_void(
+def test_booking_rejection_after_authorization_blocks_capture_and_voids(
     client: TestClient, airports: list[dict[str, Any]]
 ) -> None:
     scenario = booking_scenario(client, airports, confirm=False)
@@ -153,7 +151,7 @@ def test_booking_rejection_after_authorization_blocks_capture_allows_void(
     blocked = capture(client, payment["id"])
     assert blocked.status_code == 409  # booking not confirmed
 
-    released = void(client, payment["id"])
+    released = client.get(f"/api/v1/payments/{payment['id']}")
     assert released.status_code == 200
     assert released.json()["status"] == "CANCELLED"
 
