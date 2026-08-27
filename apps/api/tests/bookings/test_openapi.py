@@ -40,3 +40,42 @@ def test_booking_response_status_enum() -> None:
         "REJECTED",
         "CANCELLED",
     }
+
+
+def test_operator_history_and_detail_openapi_are_bounded_and_safe() -> None:
+    schema = app.openapi()
+    history = schema["paths"]["/api/v1/me/operator-bookings/history"]["get"]
+    detail = schema["paths"]["/api/v1/me/operator-bookings/{booking_id}"]["get"]
+    parameters = {item["name"]: item for item in history["parameters"]}
+    assert parameters["limit"]["schema"] == {
+        "type": "integer",
+        "maximum": 100,
+        "minimum": 1,
+        "default": 20,
+        "title": "Limit",
+    }
+    assert parameters["offset"]["schema"]["minimum"] == 0
+    assert parameters["offset"]["schema"]["default"] == 0
+    assert parameters["status"]["required"] is False
+    assert detail["parameters"][0]["name"] == "booking_id"
+    assert detail["parameters"][0]["schema"]["format"] == "uuid"
+
+    safe = schema["components"]["schemas"]["OperatorBookingReadView"]["properties"]
+    assert {
+        "operator_amount_minor",
+        "currency",
+        "legs",
+        "aircraft_registration",
+        "confirmed_at",
+        "rejected_at",
+        "cancelled_at",
+    } <= safe.keys()
+    assert {
+        "customer_id",
+        "platform_fee_minor",
+        "tax_amount_minor",
+        "total_amount_minor",
+        "payment",
+        "provider_status",
+        "rejection_note",
+    }.isdisjoint(safe)

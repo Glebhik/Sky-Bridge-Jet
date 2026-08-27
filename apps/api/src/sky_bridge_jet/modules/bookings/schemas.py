@@ -104,3 +104,27 @@ class OperatorBookingView(ApiModel):
     aircraft_category: str
     legs: list[OperatorBookingLegView]
     created_at: datetime
+
+
+class OperatorBookingReadView(ApiModel):
+    """Active-operator-safe Booking history/detail projection."""
+
+    id: UUID
+    reference: str
+    status: BookingStatus
+    trip_request_id: UUID
+    operator_offer_id: UUID
+    aircraft_id: UUID
+    currency: str
+    operator_amount_minor: int
+    operator_legal_name: str
+    aircraft_registration: str
+    aircraft_manufacturer: str
+    aircraft_model: str
+    aircraft_category: str
+    legs: list[OperatorBookingLegView]
+    confirmed_at: datetime | None
+    rejected_at: datetime | None
+    cancelled_at: datetime | None
+    created_at: datetime
+    updated_at: datetime

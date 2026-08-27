@@ -22,6 +22,7 @@ from sky_bridge_jet.modules.bookings.schemas import (
     BookingCreate,
     BookingReject,
     OperatorBookingLegView,
+    OperatorBookingReadView,
     OperatorBookingView,
 )
 from sky_bridge_jet.modules.compliance.domain import ComplianceGateError
@@ -268,6 +269,74 @@ class BookingService:
                 aircraft_category=booking.aircraft_category,
                 legs=legs_by_trip[booking.trip_request_id],
                 created_at=booking.created_at,
+            )
+            for booking in bookings
+        ]
+
+    def list_history_for_operator(
+        self,
+        operator_id: UUID,
+        *,
+        booking_status: BookingStatus | None,
+        limit: int,
+        offset: int,
+    ) -> list[OperatorBookingReadView]:
+        bookings = self.bookings.list_history_for_operator(
+            operator_id,
+            booking_status=booking_status,
+            limit=limit,
+            offset=offset,
+        )
+        return self._operator_read_views(bookings)
+
+    def get_for_operator(self, booking_id: UUID, operator_id: UUID) -> OperatorBookingReadView:
+        booking = self.bookings.get_for_operator(booking_id, operator_id)
+        if booking is None:
+            raise _not_found("Booking")
+        return self._operator_read_views([booking])[0]
+
+    def _operator_read_views(self, bookings: list[Booking]) -> list[OperatorBookingReadView]:
+        legs_by_trip: dict[UUID, list[OperatorBookingLegView]] = {
+            booking.trip_request_id: [] for booking in bookings
+        }
+        for (
+            trip_id,
+            sequence,
+            origin,
+            destination,
+            departure_at,
+            passenger_count,
+        ) in self.bookings.list_leg_rows(list(legs_by_trip)):
+            legs_by_trip[trip_id].append(
+                OperatorBookingLegView(
+                    sequence=sequence,
+                    origin_airport_code=origin,
+                    destination_airport_code=destination,
+                    departure_at=departure_at,
+                    passenger_count=passenger_count,
+                )
+            )
+        return [
+            OperatorBookingReadView(
+                id=booking.id,
+                reference=booking.reference,
+                status=booking.status,
+                trip_request_id=booking.trip_request_id,
+                operator_offer_id=booking.operator_offer_id,
+                aircraft_id=booking.aircraft_id,
+                currency=booking.currency,
+                operator_amount_minor=booking.operator_amount_minor,
+                operator_legal_name=booking.operator_legal_name,
+                aircraft_registration=booking.aircraft_registration,
+                aircraft_manufacturer=booking.aircraft_manufacturer,
+                aircraft_model=booking.aircraft_model,
+                aircraft_category=booking.aircraft_category,
+                legs=legs_by_trip[booking.trip_request_id],
+                confirmed_at=booking.confirmed_at,
+                rejected_at=booking.rejected_at,
+                cancelled_at=booking.cancelled_at,
+                created_at=booking.created_at,
+                updated_at=booking.updated_at,
             )
             for booking in bookings
         ]

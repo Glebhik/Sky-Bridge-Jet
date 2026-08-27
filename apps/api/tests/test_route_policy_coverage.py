@@ -28,9 +28,9 @@ def test_verified_route_counts() -> None:
     # verification-resend endpoint (84 → 85; 80 → 81 ops).
     # Phase 9.7.A0 adds opportunity discovery; A1 adds active-operator aircraft read
     # and its browser-safe Offer command.
-    assert len(registered) == 90, sorted(registered)
+    assert len(registered) == 92, sorted(registered)
     openapi_ops = {r for r in registered if r[1] not in DOCUMENTATION_ROUTES}
-    assert len(openapi_ops) == 86
+    assert len(openapi_ops) == 88
 
 
 def test_every_route_has_exactly_one_disposition() -> None:
