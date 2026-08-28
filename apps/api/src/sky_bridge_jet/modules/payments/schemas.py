@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from sky_bridge_jet.modules.payments.domain import (
     PaymentOperationResult,
+    PaymentOperationType,
     PaymentProviderKind,
     PaymentStatus,
     SettlementEligibility,
@@ -126,3 +127,55 @@ class AllocationResponse(ApiModel):
     captured_amount_minor: int
     refunded_amount_minor: int
     settlement_eligibility: SettlementEligibility
+
+
+class PlatformPaymentOperationResponse(ApiModel):
+    id: UUID
+    payment_id: UUID
+    operation: PaymentOperationType
+    result: PaymentOperationResult
+    amount_minor: int
+    provider_kind: PaymentProviderKind
+    provider_reference: str | None
+    failure_code: str | None
+    correlation_id: UUID
+    attempt_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class PlatformPaymentExceptionResponse(PlatformPaymentOperationResponse):
+    booking_id: UUID
+    payment_reference: str
+    payment_status: PaymentStatus
+    currency: str
+    total_amount_minor: int
+    authorized_amount_minor: int | None
+    captured_amount_minor: int
+    refunded_amount_minor: int
+    can_reconcile: bool
+
+
+class PlatformPaymentDetailResponse(ApiModel):
+    id: UUID
+    reference: str
+    booking_id: UUID
+    status: PaymentStatus
+    currency: str
+    payment_provider: PaymentProviderKind
+    operator_amount_minor: int
+    platform_fee_minor: int
+    tax_amount_minor: int
+    total_amount_minor: int
+    authorized_amount_minor: int | None
+    captured_amount_minor: int
+    refunded_amount_minor: int
+    provider_payment_reference: str | None
+    provider_status: str | None
+    requires_customer_action: bool
+    authorized_at: datetime | None
+    captured_at: datetime | None
+    cancelled_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    operations: list[PlatformPaymentOperationResponse]

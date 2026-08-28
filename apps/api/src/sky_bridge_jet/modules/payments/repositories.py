@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from uuid import UUID
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from sky_bridge_jet.modules.payments.domain import PaymentOperationResult, PaymentOperationType
 from sky_bridge_jet.modules.payments.models import Payment, PaymentOperation
@@ -72,6 +72,42 @@ class PaymentOperationRepository:
             .where(PaymentOperation.correlation_id == correlation_id)
             .with_for_update()
         )
+
+    def get_for_update(self, operation_id: UUID) -> PaymentOperation | None:
+        return self.session.scalar(
+            select(PaymentOperation).where(PaymentOperation.id == operation_id).with_for_update()
+        )
+
+    def list_exceptions(
+        self,
+        *,
+        results: Sequence[PaymentOperationResult],
+        operation: PaymentOperationType | None,
+        limit: int,
+        offset: int,
+    ) -> Sequence[PaymentOperation]:
+        statement = (
+            select(PaymentOperation)
+            .options(joinedload(PaymentOperation.payment))
+            .where(PaymentOperation.result.in_(results))
+            .order_by(PaymentOperation.updated_at.desc(), PaymentOperation.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        if operation is not None:
+            statement = statement.where(PaymentOperation.operation == operation)
+        return self.session.scalars(statement).all()
+
+    def list_for_payment(
+        self, payment_id: UUID, *, limit: int, offset: int
+    ) -> Sequence[PaymentOperation]:
+        return self.session.scalars(
+            select(PaymentOperation)
+            .where(PaymentOperation.payment_id == payment_id)
+            .order_by(PaymentOperation.created_at.desc(), PaymentOperation.id.desc())
+            .limit(limit)
+            .offset(offset)
+        ).all()
 
     def get_unresolved(
         self, payment_id: UUID, operation: PaymentOperationType

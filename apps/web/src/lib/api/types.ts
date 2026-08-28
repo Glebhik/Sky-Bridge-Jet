@@ -131,6 +131,65 @@ export interface PlatformReviewCommand {
   readonly note?: string;
 }
 
+export type PaymentOperationType = "AUTHORIZE" | "CAPTURE" | "VOID" | "REFUND";
+export type PaymentOperationResult =
+  | "PENDING"
+  | "UNKNOWN"
+  | "FAILED"
+  | "SUCCEEDED";
+
+export interface PlatformPaymentOperation {
+  readonly id: string;
+  readonly payment_id: string;
+  readonly operation: PaymentOperationType;
+  readonly result: PaymentOperationResult;
+  readonly amount_minor: number;
+  readonly provider_kind: "FAKE" | "STRIPE";
+  readonly provider_reference: string | null;
+  readonly failure_code: string | null;
+  readonly correlation_id: string;
+  readonly attempt_count: number;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+export interface PlatformPaymentException extends PlatformPaymentOperation {
+  readonly booking_id: string;
+  readonly payment_reference: string;
+  readonly payment_status: string;
+  readonly currency: string;
+  readonly total_amount_minor: number;
+  readonly authorized_amount_minor: number | null;
+  readonly captured_amount_minor: number;
+  readonly refunded_amount_minor: number;
+  readonly can_reconcile: boolean;
+}
+
+export interface PlatformPaymentDetail {
+  readonly id: string;
+  readonly reference: string;
+  readonly booking_id: string;
+  readonly status: string;
+  readonly currency: string;
+  readonly payment_provider: "FAKE" | "STRIPE";
+  readonly operator_amount_minor: number;
+  readonly platform_fee_minor: number;
+  readonly tax_amount_minor: number;
+  readonly total_amount_minor: number;
+  readonly authorized_amount_minor: number | null;
+  readonly captured_amount_minor: number;
+  readonly refunded_amount_minor: number;
+  readonly provider_payment_reference: string | null;
+  readonly provider_status: string | null;
+  readonly requires_customer_action: boolean;
+  readonly authorized_at: string | null;
+  readonly captured_at: string | null;
+  readonly cancelled_at: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+  readonly operations: readonly PlatformPaymentOperation[];
+}
+
 /** The `/auth/register` request contract (Phase 9.2.A). Profile data is out of scope. */
 export interface RegisterRequest {
   readonly email: string;

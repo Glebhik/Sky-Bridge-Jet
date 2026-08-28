@@ -827,6 +827,75 @@ class PaymentService:
         )
         return payment, eligibility
 
+    def list_platform_exceptions(
+        self,
+        *,
+        results: list[PaymentOperationResult],
+        operation: PaymentOperationType | None,
+        limit: int,
+        offset: int,
+    ) -> list[tuple[PaymentOperation, Payment]]:
+        rows = self.operations.list_exceptions(
+            results=results, operation=operation, limit=limit, offset=offset
+        )
+        return [(row, row.payment) for row in rows]
+
+    def get_platform_detail(
+        self, payment_id: UUID, *, limit: int, offset: int
+    ) -> tuple[Payment, list[PaymentOperation]]:
+        payment = self.get(payment_id)
+        return payment, list(
+            self.operations.list_for_payment(payment_id, limit=limit, offset=offset)
+        )
+
+    def reconcile_operation(self, operation_id: UUID, *, on_commit: OnCommit = None) -> Payment:
+        """Retry one UNKNOWN durable attempt without minting new financial identity."""
+        with self.session.begin():
+            operation = self.operations.get_for_update(operation_id)
+            if operation is None:
+                raise _not_found("Payment operation")
+            if operation.result is not PaymentOperationResult.UNKNOWN:
+                raise InvalidPaymentStateError(
+                    "Only an UNKNOWN payment operation can be reconciled manually"
+                )
+            payment_id = operation.payment_id
+            operation_type = operation.operation
+            idempotency_key = operation.idempotency_key
+            # Claim this exact logical operation before provider dispatch. A concurrent
+            # reviewer observes PENDING and fails closed; provider identity remains the
+            # existing correlation_id inside the durable command implementation.
+            operation.result = PaymentOperationResult.PENDING
+            operation.failure_code = None
+            self.session.flush()
+        try:
+            if operation_type is PaymentOperationType.AUTHORIZE:
+                return self.authorize(
+                    payment_id,
+                    PaymentAuthorize(idempotency_key=idempotency_key),
+                    on_commit=on_commit,
+                )
+            if operation_type is PaymentOperationType.CAPTURE:
+                return self.capture(
+                    payment_id,
+                    PaymentCapture(idempotency_key=idempotency_key),
+                    on_commit=on_commit,
+                )
+            if operation_type is PaymentOperationType.VOID:
+                return self.void(
+                    payment_id, PaymentVoid(idempotency_key=idempotency_key), on_commit=on_commit
+                )
+            raise InvalidPaymentStateError("This payment operation cannot be reconciled manually")
+        except (InvalidPaymentStateError, PaymentEligibilityError):
+            # The provider was not dispatched. Restore the factual unresolved state;
+            # otherwise a local eligibility conflict would strand the attempt as if a
+            # provider call were still in flight.
+            with self.session.begin():
+                claimed = self.operations.get_for_update(operation_id)
+                if claimed is not None and claimed.result is PaymentOperationResult.PENDING:
+                    claimed.result = PaymentOperationResult.UNKNOWN
+                    claimed.failure_code = "provider_outcome_unknown"
+            raise
+
     # -- Idempotency helpers ------------------------------------------------
 
     def _replay(

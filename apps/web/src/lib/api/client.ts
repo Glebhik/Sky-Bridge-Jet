@@ -34,6 +34,10 @@ import type {
   PlatformEvidence,
   PlatformReviewCommand,
   ComplianceAuditEvent,
+  PlatformPaymentDetail,
+  PlatformPaymentException,
+  PaymentOperationResult,
+  PaymentOperationType,
 } from "@/lib/api/types";
 
 /**
@@ -299,6 +303,29 @@ export const portalApi = {
     apiRequest<readonly ComplianceAuditEvent[]>(
       `platform/compliance/${kind}/${id}/audit-events`,
       { query: { limit: 50 }, signal },
+    ),
+  listPlatformPaymentExceptions: (
+    query: {
+      readonly result?: readonly PaymentOperationResult[];
+      readonly operation?: PaymentOperationType;
+      readonly limit: number;
+      readonly offset: number;
+    },
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<readonly PlatformPaymentException[]>(
+      "platform/payments/exceptions",
+      { query, signal },
+    ),
+  getPlatformPayment: (id: string, signal?: AbortSignal) =>
+    apiRequest<PlatformPaymentDetail>(`platform/payments/${id}`, {
+      query: { operation_limit: 100, operation_offset: 0 },
+      signal,
+    }),
+  reconcilePlatformPaymentOperation: (id: string, signal?: AbortSignal) =>
+    apiRequest<PlatformPaymentDetail>(
+      `platform/payment-operations/${id}/reconcile`,
+      { method: "POST", signal },
     ),
   listTripRequests: (organizationId?: string, signal?: AbortSignal) =>
     apiRequest<readonly CustomerTripRequest[]>("me/trip-requests", {

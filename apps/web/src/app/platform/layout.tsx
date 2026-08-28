@@ -31,12 +31,12 @@ export default async function PlatformLayout({
     (item) => item.organization_type === "PLATFORM",
   );
   const canReview = session.permissions.includes("compliance.review");
-  if (!platformMember || !canReview) {
+  const canReadPayments = session.permissions.includes("payment.read");
+  if (!platformMember || (!canReview && !canReadPayments)) {
     return (
       <Container>
-        <Alert tone="error" title="Compliance reviewer access required">
-          This internal workspace is limited to authorized platform compliance
-          reviewers.
+        <Alert tone="error" title="Platform workspace access required">
+          This internal workspace is limited to authorized platform staff.
         </Alert>
       </Container>
     );
@@ -44,7 +44,10 @@ export default async function PlatformLayout({
   return (
     <main id="platform-main" className="platform platform-main">
       <nav className="platform-nav" aria-label="Platform workspace">
-        <Link href="/platform/compliance">Compliance</Link>
+        {canReview ? <Link href="/platform/compliance">Compliance</Link> : null}
+        {canReadPayments ? (
+          <Link href="/platform/payments">Payments</Link>
+        ) : null}
       </nav>
       {children}
     </main>
