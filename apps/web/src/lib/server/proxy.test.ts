@@ -65,6 +65,46 @@ describe("validateProxyRequest — closed allow-list", () => {
   });
 });
 
+describe("Phase 9.7.C compliance readiness — exact closed surface", () => {
+  it("allows exactly the two operator-safe collection GETs", () => {
+    for (const path of [
+      ["me", "operator-compliance-readiness"],
+      ["me", "operator-aircraft"],
+    ]) {
+      expect(validateProxyRequest(path, "GET")).toMatchObject({ ok: true });
+      for (const method of ["POST", "PUT", "PATCH", "DELETE"])
+        expect(validateProxyRequest(path, method)).toMatchObject({
+          ok: false,
+          status: 405,
+        });
+    }
+  });
+
+  it("rejects internal, foreign, mutation, payment, and traversal families", () => {
+    for (const path of [
+      ["operators", "11111111-2222-4333-8444-555555555555", "eligibility"],
+      ["operators", "11111111-2222-4333-8444-555555555555", "admission"],
+      ["operators", "11111111-2222-4333-8444-555555555555", "evidence"],
+      ["compliance", "review"],
+      ["compliance", "approve"],
+      ["compliance", "reject"],
+      ["compliance", "suspend"],
+      ["documents", "raw"],
+      ["payments", "refund"],
+      ["webhooks", "stripe"],
+      ["admin", "compliance"],
+      ["me", "operator-compliance-readiness", "extra"],
+      ["me", "operator-compliance-readiness%2fextra"],
+      ["me", "..", "operator-compliance-readiness"],
+      ["me", "operator-aircraft-extra"],
+    ])
+      expect(validateProxyRequest(path, "GET")).toMatchObject({
+        ok: false,
+        status: 404,
+      });
+  });
+});
+
 describe("Phase 9.4.A offer reads — exact closed pattern", () => {
   const UUID = "b32413c8-88e9-4c05-89e5-78afb14f5eb4";
   it("allows only GET on the exact trip offer collection", () => {

@@ -51,6 +51,7 @@ export const PROXY_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   "me/operator-bookings/history": ["GET"],
   "me/operator-opportunities": ["GET"],
   "me/operator-aircraft": ["GET"],
+  "me/operator-compliance-readiness": ["GET"],
   "me/operator-offers": ["POST"],
   // Phase 9.3.B customer write journey (create DRAFT → submit same DRAFT). Exact paths only.
   passengers: ["POST"],

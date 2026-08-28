@@ -106,6 +106,40 @@ describe("apiRequest — success and typed errors", () => {
   });
 });
 
+describe("portalApi — Phase 9.7.C compliance reads", () => {
+  it("uses two exact same-origin GETs with org header, no-store, and AbortSignal", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse({
+          admission_status: null,
+          marketplace_eligible: false,
+          blockers: ["OPERATOR_NOT_ADMITTED"],
+          created_at: null,
+          updated_at: null,
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse([]));
+    const controller = new AbortController();
+    await portalApi.getOperatorComplianceReadiness("org-42", controller.signal);
+    await portalApi.listOperatorAircraft("org-42", controller.signal);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/proxy/me/operator-compliance-readiness",
+      "/api/proxy/me/operator-aircraft?limit=100&offset=0",
+    ]);
+    for (const [, init] of fetchSpy.mock.calls) {
+      expect(init?.method).toBe("GET");
+      expect(init?.credentials).toBe("same-origin");
+      expect(init?.cache).toBe("no-store");
+      expect(init?.signal).toBe(controller.signal);
+      const headers = init?.headers as Headers;
+      expect(headers.get("x-organization-id")).toBe("org-42");
+      expect(headers.get("authorization")).toBeNull();
+    }
+  });
+});
+
 describe("portalApi — Phase 9.2.A account-entry methods", () => {
   it("POSTs each account-entry contract to its exact same-origin proxy path", async () => {
     const cases: Array<[string, () => Promise<unknown>, unknown]> = [
