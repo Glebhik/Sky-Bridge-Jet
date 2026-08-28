@@ -29,6 +29,11 @@ import type {
   OperatorBookingReadView,
   OperatorBookingStatus,
   OperatorComplianceReadiness,
+  PlatformAdmission,
+  PlatformAuthorization,
+  PlatformEvidence,
+  PlatformReviewCommand,
+  ComplianceAuditEvent,
 } from "@/lib/api/types";
 
 /**
@@ -205,6 +210,96 @@ export const portalApi = {
       method: "POST",
       signal,
     }),
+  listPlatformAdmissions: (
+    query: {
+      readonly status?: string;
+      readonly limit: number;
+      readonly offset: number;
+    },
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<readonly PlatformAdmission[]>("platform/compliance/admissions", {
+      query,
+      signal,
+    }),
+  getPlatformAdmission: (id: string, signal?: AbortSignal) =>
+    apiRequest<PlatformAdmission>(`platform/compliance/admissions/${id}`, {
+      signal,
+    }),
+  reviewPlatformAdmission: (
+    id: string,
+    body: PlatformReviewCommand,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<PlatformAdmission>(
+      `platform/compliance/admissions/${id}/review`,
+      {
+        method: "POST",
+        body,
+        signal,
+      },
+    ),
+  listPlatformEvidence: (
+    query: {
+      readonly status?: string;
+      readonly limit: number;
+      readonly offset: number;
+    },
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<readonly PlatformEvidence[]>("platform/compliance/evidence", {
+      query,
+      signal,
+    }),
+  getPlatformEvidence: (id: string, signal?: AbortSignal) =>
+    apiRequest<PlatformEvidence>(`platform/compliance/evidence/${id}`, {
+      signal,
+    }),
+  reviewPlatformEvidence: (
+    id: string,
+    body: PlatformReviewCommand,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<PlatformEvidence>(`platform/compliance/evidence/${id}/review`, {
+      method: "POST",
+      body,
+      signal,
+    }),
+  listPlatformAuthorizations: (
+    query: {
+      readonly status?: string;
+      readonly limit: number;
+      readonly offset: number;
+    },
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<readonly PlatformAuthorization[]>(
+      "platform/compliance/aircraft-authorizations",
+      { query, signal },
+    ),
+  getPlatformAuthorization: (id: string, signal?: AbortSignal) =>
+    apiRequest<PlatformAuthorization>(
+      `platform/compliance/aircraft-authorizations/${id}`,
+      { signal },
+    ),
+  reviewPlatformAuthorization: (
+    id: string,
+    body: PlatformReviewCommand,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<PlatformAuthorization>(
+      `platform/compliance/aircraft-authorizations/${id}/review`,
+      { method: "POST", body, signal },
+    ),
+  listPlatformComplianceAudit: (
+    kind: "admissions" | "evidence" | "aircraft-authorizations",
+    id: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<readonly ComplianceAuditEvent[]>(
+      `platform/compliance/${kind}/${id}/audit-events`,
+      { query: { limit: 50 }, signal },
+    ),
   listTripRequests: (organizationId?: string, signal?: AbortSignal) =>
     apiRequest<readonly CustomerTripRequest[]>("me/trip-requests", {
       organizationId,

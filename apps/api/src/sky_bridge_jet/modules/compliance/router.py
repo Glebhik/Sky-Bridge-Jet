@@ -4,16 +4,20 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from sky_bridge_jet.db.session import get_db
 from sky_bridge_jet.modules import access
 from sky_bridge_jet.modules.compliance.domain import (
+    ActorType,
+    AircraftAuthorizationStatus,
     ComplianceConflictError,
     ComplianceEntityType,
     ComplianceGateError,
+    EvidenceStatus,
+    OperatorAdmissionStatus,
     effective_evidence_status,
 )
 from sky_bridge_jet.modules.compliance.evaluator import EligibilityDecision
@@ -22,6 +26,11 @@ from sky_bridge_jet.modules.compliance.models import (
     ComplianceEvidence,
     OperatorAdmission,
     OperatorAircraftAuthorization,
+)
+from sky_bridge_jet.modules.compliance.repositories import (
+    PlatformAdmissionRecord,
+    PlatformAuthorizationRecord,
+    PlatformEvidenceRecord,
 )
 from sky_bridge_jet.modules.compliance.schemas import (
     AdmissionReviewCommand,
@@ -36,6 +45,12 @@ from sky_bridge_jet.modules.compliance.schemas import (
     OperatorAircraftEligibilityResponse,
     OperatorComplianceReadinessResponse,
     OperatorEligibilityResponse,
+    PlatformAdmissionReview,
+    PlatformAdmissionView,
+    PlatformAuthorizationReview,
+    PlatformAuthorizationView,
+    PlatformEvidenceReview,
+    PlatformEvidenceView,
 )
 from sky_bridge_jet.modules.compliance.services import ComplianceService
 from sky_bridge_jet.modules.core_aviation.domain import ResourceNotFoundError
@@ -45,10 +60,13 @@ from sky_bridge_jet.modules.iam.dependencies import (
     CurrentPrincipal,
     require_permission,
 )
-from sky_bridge_jet.modules.iam.domain import Permission
+from sky_bridge_jet.modules.iam.domain import OrganizationRole, Permission
 
 router = APIRouter(tags=["compliance"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
+ReviewLimit = Annotated[int, Query(ge=1, le=100)]
+ReviewOffset = Annotated[int, Query(ge=0)]
+AuditLimit = Annotated[int, Query(ge=1, le=100)]
 
 _ERR = {"model": ErrorResponse}
 # Platform review is high-consequence: only an authenticated principal holding the
@@ -169,6 +187,88 @@ def _evidence(evidence: ComplianceEvidence) -> EvidenceResponse:
     )
 
 
+def _review_actor(principal: CurrentPrincipal) -> tuple[ActorType, str]:
+    """Derive immutable audit attribution from the authenticated principal."""
+    memberships = principal.granting_memberships(Permission.COMPLIANCE_REVIEW)
+    actor_type = (
+        ActorType.PRODUCT_OWNER
+        if any(item.role is OrganizationRole.PRODUCT_OWNER for item in memberships)
+        else ActorType.PLATFORM_REVIEWER
+    )
+    return actor_type, str(principal.user_id)
+
+
+def _platform_admission(record: PlatformAdmissionRecord) -> PlatformAdmissionView:
+    admission = record.admission
+    return PlatformAdmissionView(
+        id=admission.id,
+        operator_id=admission.operator_id,
+        operator_legal_name=record.operator_legal_name,
+        operator_trading_name=record.operator_trading_name,
+        operator_country_code=record.operator_country_code,
+        status=admission.status,
+        reason_code=admission.reason_code,
+        review_note=admission.review_note,
+        submitted_at=admission.submitted_at,
+        reviewed_at=admission.reviewed_at,
+        created_at=admission.created_at,
+        updated_at=admission.updated_at,
+    )
+
+
+def _platform_evidence(record: PlatformEvidenceRecord) -> PlatformEvidenceView:
+    evidence = record.evidence
+    return PlatformEvidenceView(
+        id=evidence.id,
+        operator_id=evidence.operator_id,
+        operator_legal_name=record.operator_legal_name,
+        operator_trading_name=record.operator_trading_name,
+        aircraft_id=evidence.aircraft_id,
+        aircraft_registration=record.aircraft_registration,
+        evidence_type=evidence.evidence_type,
+        status=evidence.status,
+        effective_status=effective_evidence_status(
+            evidence.status, evidence.expiry_date, now=datetime.now(UTC)
+        ),
+        authority_basis=evidence.authority_basis,
+        reference_number=evidence.reference_number,
+        issuing_authority=evidence.issuing_authority,
+        jurisdiction=evidence.jurisdiction,
+        insurer_name=evidence.insurer_name,
+        has_storage_object=evidence.storage_object_reference is not None,
+        effective_date=evidence.effective_date,
+        expiry_date=evidence.expiry_date,
+        submitted_at=evidence.submitted_at,
+        reviewed_at=evidence.reviewed_at,
+        review_reason_code=evidence.review_reason_code,
+        review_note=evidence.review_note,
+        created_at=evidence.created_at,
+        updated_at=evidence.updated_at,
+    )
+
+
+def _platform_authorization(record: PlatformAuthorizationRecord) -> PlatformAuthorizationView:
+    authorization = record.authorization
+    return PlatformAuthorizationView(
+        id=authorization.id,
+        operator_id=authorization.operator_id,
+        operator_legal_name=record.operator_legal_name,
+        operator_trading_name=record.operator_trading_name,
+        aircraft_id=authorization.aircraft_id,
+        aircraft_registration=record.aircraft_registration,
+        aircraft_manufacturer=record.aircraft_manufacturer,
+        aircraft_model=record.aircraft_model,
+        status=authorization.status,
+        authority_basis=authorization.authority_basis,
+        reason_code=authorization.reason_code,
+        review_note=authorization.review_note,
+        submitted_at=authorization.submitted_at,
+        reviewed_at=authorization.reviewed_at,
+        created_at=authorization.created_at,
+        updated_at=authorization.updated_at,
+    )
+
+
 def _operator_eligibility(
     operator_id: UUID, decision: EligibilityDecision
 ) -> OperatorEligibilityResponse:
@@ -199,6 +299,252 @@ def get_my_operator_compliance_readiness(
         created_at=admission.created_at if admission is not None else None,
         updated_at=admission.updated_at if admission is not None else None,
     )
+
+
+# -- Platform compliance review center ------------------------------------
+
+
+@router.get(
+    "/platform/compliance/admissions",
+    dependencies=[_REQUIRE_COMPLIANCE_REVIEW],
+    response_model=list[PlatformAdmissionView],
+    operation_id="listPlatformComplianceAdmissions",
+)
+def list_platform_admissions(
+    session: DatabaseSession,
+    status_filter: Annotated[OperatorAdmissionStatus | None, Query(alias="status")] = None,
+    limit: ReviewLimit = 20,
+    offset: ReviewOffset = 0,
+) -> list[PlatformAdmissionView]:
+    records = ComplianceService(session).list_platform_admissions(
+        status=status_filter, limit=limit, offset=offset
+    )
+    return [_platform_admission(record) for record in records]
+
+
+@router.get(
+    "/platform/compliance/admissions/{admission_id}",
+    dependencies=[_REQUIRE_COMPLIANCE_REVIEW],
+    response_model=PlatformAdmissionView,
+    responses={404: _ERR},
+    operation_id="getPlatformComplianceAdmission",
+)
+def get_platform_admission(admission_id: UUID, session: DatabaseSession) -> PlatformAdmissionView:
+    return _platform_admission(ComplianceService(session).get_platform_admission(admission_id))
+
+
+@router.post(
+    "/platform/compliance/admissions/{admission_id}/review",
+    dependencies=[_REQUIRE_COMPLIANCE_REVIEW],
+    response_model=PlatformAdmissionView,
+    responses={404: _ERR, 409: _ERR},
+    operation_id="reviewPlatformComplianceAdmission",
+)
+def review_platform_admission(
+    admission_id: UUID,
+    data: PlatformAdmissionReview,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> PlatformAdmissionView:
+    service = ComplianceService(session)
+    record = service.get_platform_admission(admission_id)
+    operator_id = record.admission.operator_id
+    actor_type, actor_reference = _review_actor(principal)
+    session.rollback()
+    service.review_admission(
+        operator_id,
+        AdmissionReviewCommand(
+            action=data.action,
+            actor_type=actor_type,
+            actor_reference=actor_reference,
+            reason_code=data.reason_code,
+            note=data.note,
+        ),
+    )
+    return _platform_admission(service.get_platform_admission(admission_id))
+
+
+@router.get(
+    "/platform/compliance/admissions/{admission_id}/audit-events",
+    dependencies=[_REQUIRE_COMPLIANCE_REVIEW],
+    response_model=list[AuditEventResponse],
+    responses={404: _ERR},
+    operation_id="listPlatformComplianceAdmissionAuditEvents",
+)
+def list_platform_admission_audit(
+    admission_id: UUID, session: DatabaseSession, limit: AuditLimit = 50
+) -> list[AuditEventResponse]:
+    service = ComplianceService(session)
+    service.get_platform_admission(admission_id)
+    return [
+        _audit_event(event)
+        for event in service.list_audit_events(
+            ComplianceEntityType.OPERATOR_ADMISSION, admission_id, limit=limit
+        )
+    ]
+
+
+@router.get(
+    "/platform/compliance/evidence",
+    dependencies=[_REQUIRE_COMPLIANCE_REVIEW],
+    response_model=list[PlatformEvidenceView],
+    operation_id="listPlatformComplianceEvidence",
+)
+def list_platform_evidence(
+    session: DatabaseSession,
+    status_filter: Annotated[EvidenceStatus | None, Query(alias="status")] = None,
+    limit: ReviewLimit = 20,
+    offset: ReviewOffset = 0,
+) -> list[PlatformEvidenceView]:
+    records = ComplianceService(session).list_platform_evidence(
+        status=status_filter, limit=limit, offset=offset
+    )
+    return [_platform_evidence(record) for record in records]
+
+
+@router.get(
+    "/platform/compliance/evidence/{evidence_id}",
+    dependencies=[_REQUIRE_COMPLIANCE_REVIEW],
+    response_model=PlatformEvidenceView,
+    responses={404: _ERR},
+    operation_id="getPlatformComplianceEvidence",
+)
+def get_platform_evidence(evidence_id: UUID, session: DatabaseSession) -> PlatformEvidenceView:
+    return _platform_evidence(ComplianceService(session).get_platform_evidence(evidence_id))
+
+
+@router.post(
+    "/platform/compliance/evidence/{evidence_id}/review",
+    dependencies=[_REQUIRE_COMPLIANCE_REVIEW],
+    response_model=PlatformEvidenceView,
+    responses={404: _ERR, 409: _ERR},
+    operation_id="reviewPlatformComplianceEvidence",
+)
+def review_platform_evidence(
+    evidence_id: UUID,
+    data: PlatformEvidenceReview,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> PlatformEvidenceView:
+    actor_type, actor_reference = _review_actor(principal)
+    service = ComplianceService(session)
+    service.review_evidence(
+        evidence_id,
+        EvidenceReviewCommand(
+            action=data.action,
+            actor_type=actor_type,
+            actor_reference=actor_reference,
+            reason_code=data.reason_code,
+            note=data.note,
+        ),
+    )
+    return _platform_evidence(service.get_platform_evidence(evidence_id))
+
+
+@router.get(
+    "/platform/compliance/evidence/{evidence_id}/audit-events",
+    dependencies=[_REQUIRE_COMPLIANCE_REVIEW],
+    response_model=list[AuditEventResponse],
+    responses={404: _ERR},
+    operation_id="listPlatformComplianceEvidenceAuditEvents",
+)
+def list_platform_evidence_audit(
+    evidence_id: UUID, session: DatabaseSession, limit: AuditLimit = 50
+) -> list[AuditEventResponse]:
+    service = ComplianceService(session)
+    service.get_platform_evidence(evidence_id)
+    return [
+        _audit_event(event)
+        for event in service.list_audit_events(
+            ComplianceEntityType.COMPLIANCE_EVIDENCE, evidence_id, limit=limit
+        )
+    ]
+
+
+@router.get(
+    "/platform/compliance/aircraft-authorizations",
+    dependencies=[_REQUIRE_COMPLIANCE_REVIEW],
+    response_model=list[PlatformAuthorizationView],
+    operation_id="listPlatformAircraftAuthorizations",
+)
+def list_platform_authorizations(
+    session: DatabaseSession,
+    status_filter: Annotated[AircraftAuthorizationStatus | None, Query(alias="status")] = None,
+    limit: ReviewLimit = 20,
+    offset: ReviewOffset = 0,
+) -> list[PlatformAuthorizationView]:
+    records = ComplianceService(session).list_platform_authorizations(
+        status=status_filter, limit=limit, offset=offset
+    )
+    return [_platform_authorization(record) for record in records]
+
+
+@router.get(
+    "/platform/compliance/aircraft-authorizations/{authorization_id}",
+    dependencies=[_REQUIRE_COMPLIANCE_REVIEW],
+    response_model=PlatformAuthorizationView,
+    responses={404: _ERR},
+    operation_id="getPlatformAircraftAuthorization",
+)
+def get_platform_authorization(
+    authorization_id: UUID, session: DatabaseSession
+) -> PlatformAuthorizationView:
+    return _platform_authorization(
+        ComplianceService(session).get_platform_authorization(authorization_id)
+    )
+
+
+@router.post(
+    "/platform/compliance/aircraft-authorizations/{authorization_id}/review",
+    dependencies=[_REQUIRE_COMPLIANCE_REVIEW],
+    response_model=PlatformAuthorizationView,
+    responses={404: _ERR, 409: _ERR},
+    operation_id="reviewPlatformAircraftAuthorization",
+)
+def review_platform_authorization(
+    authorization_id: UUID,
+    data: PlatformAuthorizationReview,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> PlatformAuthorizationView:
+    service = ComplianceService(session)
+    record = service.get_platform_authorization(authorization_id)
+    operator_id = record.authorization.operator_id
+    aircraft_id = record.authorization.aircraft_id
+    actor_type, actor_reference = _review_actor(principal)
+    session.rollback()
+    service.review_authorization(
+        operator_id,
+        aircraft_id,
+        AuthorizationReviewCommand(
+            action=data.action,
+            actor_type=actor_type,
+            actor_reference=actor_reference,
+            reason_code=data.reason_code,
+            note=data.note,
+        ),
+    )
+    return _platform_authorization(service.get_platform_authorization(authorization_id))
+
+
+@router.get(
+    "/platform/compliance/aircraft-authorizations/{authorization_id}/audit-events",
+    dependencies=[_REQUIRE_COMPLIANCE_REVIEW],
+    response_model=list[AuditEventResponse],
+    responses={404: _ERR},
+    operation_id="listPlatformAircraftAuthorizationAuditEvents",
+)
+def list_platform_authorization_audit(
+    authorization_id: UUID, session: DatabaseSession, limit: AuditLimit = 50
+) -> list[AuditEventResponse]:
+    service = ComplianceService(session)
+    service.get_platform_authorization(authorization_id)
+    return [
+        _audit_event(event)
+        for event in service.list_audit_events(
+            ComplianceEntityType.AIRCRAFT_AUTHORIZATION, authorization_id, limit=limit
+        )
+    ]
 
 
 # -- Operator admission -----------------------------------------------------

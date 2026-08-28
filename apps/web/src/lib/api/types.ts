@@ -38,6 +38,99 @@ export interface MeResponse {
   readonly permissions: readonly string[];
 }
 
+export type AdmissionStatus =
+  | "DRAFT"
+  | "SUBMITTED"
+  | "UNDER_REVIEW"
+  | "APPROVED"
+  | "REJECTED"
+  | "SUSPENDED";
+export type EvidenceStatus =
+  | "SUBMITTED"
+  | "UNDER_REVIEW"
+  | "VERIFIED"
+  | "REJECTED"
+  | "SUPERSEDED";
+export type AuthorizationStatus = AdmissionStatus;
+
+export interface PlatformAdmission {
+  readonly id: string;
+  readonly operator_id: string;
+  readonly operator_legal_name: string;
+  readonly operator_trading_name: string | null;
+  readonly operator_country_code: string;
+  readonly status: AdmissionStatus;
+  readonly reason_code: string | null;
+  readonly review_note: string | null;
+  readonly submitted_at: string | null;
+  readonly reviewed_at: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+export interface PlatformEvidence {
+  readonly id: string;
+  readonly operator_id: string;
+  readonly operator_legal_name: string;
+  readonly operator_trading_name: string | null;
+  readonly aircraft_id: string | null;
+  readonly aircraft_registration: string | null;
+  readonly evidence_type: string;
+  readonly status: EvidenceStatus;
+  readonly effective_status: string;
+  readonly authority_basis: string | null;
+  readonly reference_number: string | null;
+  readonly issuing_authority: string | null;
+  readonly jurisdiction: string | null;
+  readonly insurer_name: string | null;
+  readonly has_storage_object: boolean;
+  readonly effective_date: string | null;
+  readonly expiry_date: string | null;
+  readonly submitted_at: string | null;
+  readonly reviewed_at: string | null;
+  readonly review_reason_code: string | null;
+  readonly review_note: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+export interface PlatformAuthorization {
+  readonly id: string;
+  readonly operator_id: string;
+  readonly operator_legal_name: string;
+  readonly operator_trading_name: string | null;
+  readonly aircraft_id: string;
+  readonly aircraft_registration: string;
+  readonly aircraft_manufacturer: string;
+  readonly aircraft_model: string;
+  readonly status: AuthorizationStatus;
+  readonly authority_basis: string;
+  readonly reason_code: string | null;
+  readonly review_note: string | null;
+  readonly submitted_at: string | null;
+  readonly reviewed_at: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+export interface ComplianceAuditEvent {
+  readonly id: string;
+  readonly action: string;
+  readonly previous_status: string | null;
+  readonly new_status: string | null;
+  readonly actor_type: string;
+  readonly actor_reference: string | null;
+  readonly reason_code: string | null;
+  readonly note: string | null;
+  readonly created_at: string;
+}
+
+export interface PlatformReviewCommand {
+  readonly action: string;
+  readonly reason_code?: string;
+  readonly note?: string;
+}
+
 /** The `/auth/register` request contract (Phase 9.2.A). Profile data is out of scope. */
 export interface RegisterRequest {
   readonly email: string;

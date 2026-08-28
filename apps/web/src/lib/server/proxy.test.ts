@@ -20,6 +20,52 @@ afterEach(() => {
 });
 
 describe("validateProxyRequest — closed allow-list", () => {
+  it("allows only the exact bounded platform compliance surface", () => {
+    const id = "123e4567-e89b-42d3-a456-426614174000";
+    for (const collection of [
+      "admissions",
+      "evidence",
+      "aircraft-authorizations",
+    ]) {
+      expect(
+        validateProxyRequest(["platform", "compliance", collection], "GET"),
+      ).toMatchObject({ ok: true });
+      expect(
+        validateProxyRequest(["platform", "compliance", collection, id], "GET"),
+      ).toMatchObject({ ok: true });
+      expect(
+        validateProxyRequest(
+          ["platform", "compliance", collection, id, "review"],
+          "POST",
+        ),
+      ).toMatchObject({ ok: true });
+      expect(
+        validateProxyRequest(
+          ["platform", "compliance", collection, id, "audit-events"],
+          "GET",
+        ),
+      ).toMatchObject({ ok: true });
+      for (const [path, method] of [
+        [["platform", "compliance", collection], "POST"],
+        [["platform", "compliance", collection, "bad"], "GET"],
+        [["platform", "compliance", collection, id, "review"], "GET"],
+        [["platform", "compliance", collection, id, "extra"], "GET"],
+        [["platform", "compliance", collection, `${id}%2freview`], "GET"],
+      ] as const) {
+        expect(validateProxyRequest(path, method)).toMatchObject({ ok: false });
+      }
+    }
+    for (const path of [
+      ["platform", "payments"],
+      ["platform", "refunds"],
+      ["platform", "users"],
+      ["platform", "organizations"],
+      ["platform", "compliance"],
+    ]) {
+      expect(validateProxyRequest(path, "GET")).toMatchObject({ ok: false });
+    }
+  });
+
   it("accepts an allow-listed path with a permitted method", () => {
     expect(validateProxyRequest(["auth", "me"], "GET")).toMatchObject({
       ok: true,
