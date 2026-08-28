@@ -197,6 +197,24 @@ class OperatorService:
             raise _not_found("Aircraft")
         return aircraft
 
+    def get_operator_aircraft(self, operator_id: UUID, aircraft_id: UUID) -> OperatorAircraftChoice:
+        """Return one owned aircraft with factual eligibility, concealing other tenants."""
+        aircraft = self.aircraft.get_for_operator(operator_id, aircraft_id)
+        if aircraft is None:
+            raise _not_found("Aircraft")
+        operator_eligible = (
+            ComplianceEvaluator(self.session).evaluate_operator(operator_id).eligible
+        )
+        authorization = OperatorAircraftAuthorizationRepository(self.session).get_by_pair(
+            operator_id, aircraft_id
+        )
+        return OperatorAircraftChoice(
+            aircraft=aircraft,
+            eligible=operator_eligible
+            and authorization is not None
+            and authorization.status is AircraftAuthorizationStatus.APPROVED,
+        )
+
     def list_operator_aircraft(
         self, operator_id: UUID, *, limit: int, offset: int
     ) -> list[OperatorAircraftChoice]:

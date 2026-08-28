@@ -83,6 +83,14 @@ class AircraftRepository:
     def get(self, aircraft_id: UUID) -> Aircraft | None:
         return self.session.get(Aircraft, aircraft_id)
 
+    def get_for_operator(self, operator_id: UUID, aircraft_id: UUID) -> Aircraft | None:
+        return self.session.scalar(
+            select(Aircraft).where(
+                Aircraft.id == aircraft_id,
+                Aircraft.operator_id == operator_id,
+            )
+        )
+
     def list_for_operator(
         self, operator_id: UUID, *, limit: int, offset: int
     ) -> Sequence[Aircraft]:

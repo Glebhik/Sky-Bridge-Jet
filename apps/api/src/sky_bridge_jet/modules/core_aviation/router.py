@@ -20,6 +20,7 @@ from sky_bridge_jet.modules.core_aviation.domain import (
 )
 from sky_bridge_jet.modules.core_aviation.models import TripRequest
 from sky_bridge_jet.modules.core_aviation.schemas import (
+    ActiveOperatorAircraftCreate,
     AircraftCreate,
     AircraftResponse,
     AirportResponse,
@@ -43,6 +44,7 @@ from sky_bridge_jet.modules.core_aviation.schemas import (
 from sky_bridge_jet.modules.core_aviation.services import (
     AirportService,
     CustomerService,
+    OperatorAircraftChoice,
     OperatorService,
     TripRequestService,
 )
@@ -69,6 +71,21 @@ OpportunityLimit = Annotated[int, Query(ge=1, le=100)]
 OpportunityOffset = Annotated[int, Query(ge=0)]
 AircraftLimit = Annotated[int, Query(ge=1, le=100)]
 AircraftOffset = Annotated[int, Query(ge=0)]
+
+
+def _operator_aircraft_response(choice: OperatorAircraftChoice) -> OperatorAircraftResponse:
+    # Kept as the single serialization boundary for collection and commands.
+    aircraft = choice.aircraft
+    return OperatorAircraftResponse(
+        id=aircraft.id,
+        registration=aircraft.registration,
+        manufacturer=aircraft.manufacturer,
+        model=aircraft.model,
+        category=aircraft.category,
+        passenger_capacity=aircraft.passenger_capacity,
+        status=aircraft.status,
+        eligible=choice.eligible,
+    )
 
 
 def _route_operation(request: Request) -> str:
@@ -474,20 +491,58 @@ def list_my_operator_aircraft(
     operator_id = access.active_operator_id(principal, active_organization)
     access.require_operator_access(principal, Permission.OPERATOR_READ, operator_id)
     return [
-        OperatorAircraftResponse(
-            id=choice.aircraft.id,
-            registration=choice.aircraft.registration,
-            manufacturer=choice.aircraft.manufacturer,
-            model=choice.aircraft.model,
-            category=choice.aircraft.category,
-            passenger_capacity=choice.aircraft.passenger_capacity,
-            status=choice.aircraft.status,
-            eligible=choice.eligible,
-        )
+        _operator_aircraft_response(choice)
         for choice in OperatorService(session).list_operator_aircraft(
             operator_id, limit=limit, offset=offset
         )
     ]
+
+
+@router.get(
+    "/me/operator-aircraft/{aircraft_id}",
+    response_model=OperatorAircraftResponse,
+    responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    operation_id="getMyOperatorAircraft",
+)
+def get_my_operator_aircraft(
+    aircraft_id: UUID,
+    principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
+    session: DatabaseSession,
+) -> OperatorAircraftResponse:
+    operator_id = access.active_operator_id(principal, active_organization)
+    access.require_operator_access(principal, Permission.OPERATOR_READ, operator_id)
+    return _operator_aircraft_response(
+        OperatorService(session).get_operator_aircraft(operator_id, aircraft_id)
+    )
+
+
+@router.post(
+    "/me/operator-aircraft",
+    response_model=OperatorAircraftResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
+    status_code=status.HTTP_201_CREATED,
+    operation_id="createMyOperatorAircraft",
+)
+def create_my_operator_aircraft(
+    data: ActiveOperatorAircraftCreate,
+    principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
+    session: DatabaseSession,
+) -> OperatorAircraftResponse:
+    operator_id = access.active_operator_id(principal, active_organization)
+    access.require_operator_access(principal, Permission.OPERATOR_MANAGE, operator_id)
+    session.rollback()  # release active-organization reads before the write transaction
+    aircraft = OperatorService(session).create_aircraft(
+        AircraftCreate(operator_id=operator_id, **data.model_dump())
+    )
+    return _operator_aircraft_response(
+        OperatorService(session).get_operator_aircraft(operator_id, aircraft.id)
+    )
 
 
 @router.post(
