@@ -219,6 +219,14 @@ export interface OperatorAircraft {
   readonly eligible: boolean;
 }
 
+export interface OperatorAircraftCreate {
+  readonly registration: string;
+  readonly manufacturer: string;
+  readonly model: string;
+  readonly category: string;
+  readonly passenger_capacity: number;
+}
+
 export type OperatorAdmissionStatus =
   | "DRAFT"
   | "SUBMITTED"

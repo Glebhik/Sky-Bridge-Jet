@@ -140,6 +140,68 @@ describe("portalApi — Phase 9.7.C compliance reads", () => {
   });
 });
 
+describe("portalApi — Phase 9.7.D aircraft management", () => {
+  const id = "11111111-2222-4333-8444-555555555555";
+  it("uses exact detail GET and collection POST with org, CSRF and safe body", async () => {
+    document.cookie = "sbj_csrf=csrf-97d";
+    const item = {
+      id,
+      registration: "EI-SBJ",
+      manufacturer: "Cessna",
+      model: "Citation",
+      category: "LIGHT_JET",
+      passenger_capacity: 7,
+      status: "ACTIVE",
+      eligible: true,
+    };
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse([item]))
+      .mockResolvedValueOnce(jsonResponse(item))
+      .mockResolvedValueOnce(jsonResponse(item));
+    const controller = new AbortController();
+    await portalApi.listOperatorAircraftPage(
+      "org-97d",
+      { limit: 20, offset: 40 },
+      controller.signal,
+    );
+    await portalApi.getOperatorAircraft(id, "org-97d", controller.signal);
+    await portalApi.createOperatorAircraft(
+      {
+        registration: "EI-SBJ",
+        manufacturer: "Cessna",
+        model: "Citation",
+        category: "LIGHT_JET",
+        passenger_capacity: 7,
+      },
+      "org-97d",
+    );
+    expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/proxy/me/operator-aircraft?limit=20&offset=40",
+      `/api/proxy/me/operator-aircraft/${id}`,
+      "/api/proxy/me/operator-aircraft",
+    ]);
+    expect(fetchSpy.mock.calls[0][1]).toMatchObject({
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    const post = fetchSpy.mock.calls[2][1];
+    expect(post?.method).toBe("POST");
+    expect((post?.headers as Headers).get("x-organization-id")).toBe("org-97d");
+    expect((post?.headers as Headers).get("x-csrf-token")).toBe("csrf-97d");
+    expect(JSON.parse(String(post?.body))).toEqual({
+      registration: "EI-SBJ",
+      manufacturer: "Cessna",
+      model: "Citation",
+      category: "LIGHT_JET",
+      passenger_capacity: 7,
+    });
+    expect(String(post?.body)).not.toMatch(/operator_id|status|eligible/);
+  });
+});
+
 describe("portalApi — Phase 9.2.A account-entry methods", () => {
   it("POSTs each account-entry contract to its exact same-origin proxy path", async () => {
     const cases: Array<[string, () => Promise<unknown>, unknown]> = [

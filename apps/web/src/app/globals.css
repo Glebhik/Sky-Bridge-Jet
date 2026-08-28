@@ -2877,6 +2877,89 @@ a.resource-list__reference:hover {
   text-transform: uppercase;
 }
 
+.operator-aircraft__grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+
+.operator-aircraft__card,
+.operator-aircraft__detail,
+.operator-aircraft__create {
+  display: grid;
+  gap: 1rem;
+}
+
+.operator-aircraft__card header,
+.operator-aircraft__detail header {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.operator-aircraft__card h2,
+.operator-aircraft__detail h2,
+.operator-aircraft__create h2 {
+  margin: 0;
+}
+
+.operator-aircraft dl {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.operator-aircraft dl > div {
+  border-top: 1px solid var(--o-line-soft);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding-top: 0.65rem;
+}
+
+.operator-aircraft dt {
+  color: var(--o-text-muted);
+}
+.operator-aircraft dd {
+  margin: 0;
+  text-align: end;
+}
+.operator-aircraft__create form {
+  display: grid;
+  gap: 1rem;
+}
+
+.operator-aircraft__page-status {
+  color: var(--o-text-muted);
+  margin: 0;
+}
+
+.operator-aircraft__pagination {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+@media (max-width: 40rem) {
+  .operator-nav {
+    gap: 0.75rem;
+    overflow-x: auto;
+  }
+  .operator-nav a {
+    white-space: nowrap;
+  }
+  .operator-aircraft__create .button {
+    width: 100%;
+  }
+
+  .operator-aircraft__pagination .button {
+    flex: 1;
+  }
+}
+
 .operator-history__links,
 .operator-history__toolbar,
 .operator-history__pagination {

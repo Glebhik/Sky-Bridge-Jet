@@ -21,6 +21,7 @@ import type {
   OperatorBookingDecisionResponse,
   BookingRejectionReason,
   OperatorAircraft,
+  OperatorAircraftCreate,
   OperatorOffer,
   OperatorOfferCommand,
   OperatorOfferCreate,
@@ -407,6 +408,36 @@ export const portalApi = {
   listOperatorAircraft: (organizationId: string, signal?: AbortSignal) =>
     apiRequest<readonly OperatorAircraft[]>("me/operator-aircraft", {
       query: { limit: 100, offset: 0 },
+      organizationId,
+      signal,
+    }),
+  listOperatorAircraftPage: (
+    organizationId: string,
+    query: { readonly limit: number; readonly offset: number },
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<readonly OperatorAircraft[]>("me/operator-aircraft", {
+      query,
+      organizationId,
+      signal,
+    }),
+  getOperatorAircraft: (
+    aircraftId: string,
+    organizationId: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<OperatorAircraft>(`me/operator-aircraft/${aircraftId}`, {
+      organizationId,
+      signal,
+    }),
+  createOperatorAircraft: (
+    body: OperatorAircraftCreate,
+    organizationId: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<OperatorAircraft>("me/operator-aircraft", {
+      method: "POST",
+      body,
       organizationId,
       signal,
     }),
