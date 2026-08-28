@@ -117,6 +117,13 @@ class BookingService:
                 )
             )
             self.session.flush()
+            from sky_bridge_jet.modules.notifications.marketplace import (
+                MarketplaceNotificationService,
+            )
+
+            MarketplaceNotificationService(self.session).record_booking_pending(
+                booking.id, booking.operator_id
+            )
             if on_commit is not None:
                 on_commit(self.session)
             return booking
@@ -159,6 +166,16 @@ class BookingService:
             booking.operator_confirmation_reference = data.confirmation_reference
             booking.confirmation_note = data.note
             self.session.flush()
+            trip = self.trips.get(booking.trip_request_id)
+            if trip is None:
+                raise _not_found("Trip request")
+            from sky_bridge_jet.modules.notifications.marketplace import (
+                MarketplaceNotificationService,
+            )
+
+            MarketplaceNotificationService(self.session).record_booking_confirmed(
+                booking.id, trip.customer_id
+            )
             if on_commit is not None:
                 on_commit(self.session)
         from sky_bridge_jet.modules.payments.services import PaymentService
@@ -182,6 +199,16 @@ class BookingService:
             booking.rejection_reason = data.reason
             booking.rejection_note = data.note
             self.session.flush()
+            trip = self.trips.get(booking.trip_request_id)
+            if trip is None:
+                raise _not_found("Trip request")
+            from sky_bridge_jet.modules.notifications.marketplace import (
+                MarketplaceNotificationService,
+            )
+
+            MarketplaceNotificationService(self.session).record_booking_rejected(
+                booking.id, trip.customer_id
+            )
             if on_commit is not None:
                 on_commit(self.session)
         from sky_bridge_jet.modules.payments.services import PaymentService

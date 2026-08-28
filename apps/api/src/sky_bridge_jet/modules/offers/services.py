@@ -195,6 +195,13 @@ class OperatorOfferService:
 
             offer.status = OfferStatus.SUBMITTED
             self.session.flush()
+            from sky_bridge_jet.modules.notifications.marketplace import (
+                MarketplaceNotificationService,
+            )
+
+            MarketplaceNotificationService(self.session).record_offer_available(
+                offer.id, trip.customer_id
+            )
             if on_commit is not None:
                 on_commit(self.session)
             return offer
