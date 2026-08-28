@@ -72,7 +72,11 @@ describe("Phase 9.7.C compliance readiness — exact closed surface", () => {
       ["me", "operator-aircraft"],
     ]) {
       expect(validateProxyRequest(path, "GET")).toMatchObject({ ok: true });
-      for (const method of ["POST", "PUT", "PATCH", "DELETE"])
+      const mutations =
+        path[1] === "operator-aircraft"
+          ? ["PUT", "PATCH", "DELETE"]
+          : ["POST", "PUT", "PATCH", "DELETE"];
+      for (const method of mutations)
         expect(validateProxyRequest(path, method)).toMatchObject({
           ok: false,
           status: 405,
@@ -102,6 +106,44 @@ describe("Phase 9.7.C compliance readiness — exact closed surface", () => {
         ok: false,
         status: 404,
       });
+  });
+});
+
+describe("Phase 9.7.D aircraft management — exact closed surface", () => {
+  const AIRCRAFT = "11111111-2222-4333-8444-555555555555";
+  it("allows only collection GET/POST and canonical detail GET", () => {
+    expect(
+      validateProxyRequest(["me", "operator-aircraft"], "GET"),
+    ).toMatchObject({ ok: true });
+    expect(
+      validateProxyRequest(["me", "operator-aircraft"], "POST"),
+    ).toMatchObject({ ok: true });
+    expect(
+      validateProxyRequest(["me", "operator-aircraft", AIRCRAFT], "GET"),
+    ).toMatchObject({ ok: true });
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"])
+      expect(
+        validateProxyRequest(["me", "operator-aircraft", AIRCRAFT], method),
+      ).toMatchObject({ ok: false, status: 405 });
+  });
+  it("rejects malformed ids, extensions, generic and adjacent authority", () => {
+    for (const path of [
+      ["me", "operator-aircraft", "not-a-uuid"],
+      ["me", "operator-aircraft", AIRCRAFT, "status"],
+      ["me", "operator-aircraft", `${AIRCRAFT}%2fstatus`],
+      ["operator-aircraft", AIRCRAFT],
+      ["aircraft", AIRCRAFT],
+      ["me", "operator-aircraft", AIRCRAFT, "maintenance"],
+      ["admin", "aircraft"],
+    ])
+      expect(validateProxyRequest(path, "GET")).toMatchObject({
+        ok: false,
+        status: 404,
+      });
+    for (const method of ["PUT", "PATCH", "DELETE"])
+      expect(
+        validateProxyRequest(["me", "operator-aircraft"], method),
+      ).toMatchObject({ ok: false, status: 405 });
   });
 });
 
@@ -348,7 +390,6 @@ describe("Phase 9.7.A operator offer management — exact closed surface", () =>
   it("rejects adjacent methods, malformed identifiers, extra paths, payments and admin", () => {
     for (const [path, method] of [
       [["me", "operator-opportunities"], "POST"],
-      [["me", "operator-aircraft"], "POST"],
       [["me", "operator-offers"], "GET"],
       [["offers", "bad"], "GET"],
       [["offers", OFFER, "delete"], "POST"],
