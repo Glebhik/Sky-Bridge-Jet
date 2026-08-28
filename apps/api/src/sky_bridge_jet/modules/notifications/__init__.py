@@ -1,0 +1,1 @@
+"""Durable notification outbox foundation."""
