@@ -48,6 +48,8 @@ class Disposition(StrEnum):
     PHASE_9_6B0_BOUND = "PHASE_9_6B0_BOUND"
     # Bounded internal platform compliance review center (Phase 9.8.A).
     PHASE_9_8A_BOUND = "PHASE_9_8A_BOUND"
+    # Bounded internal payment exception and reconciliation operations (Phase 9.8.B).
+    PHASE_9_8B_BOUND = "PHASE_9_8B_BOUND"
 
 
 @dataclass(frozen=True)
@@ -72,6 +74,7 @@ _P0B = Disposition.PHASE_9_0B_BOUND
 _P1A = Disposition.PHASE_9_1A_BOUND
 _P96B0 = Disposition.PHASE_9_6B0_BOUND
 _P98A = Disposition.PHASE_9_8A_BOUND
+_P98B = Disposition.PHASE_9_8B_BOUND
 
 ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
     # ---- Platform / documentation / discovery (public) --------------------
@@ -333,6 +336,27 @@ ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
         _AB,
         "platform (payment.refund)",
         "payment.refund unchanged; ADR-043 removed finance-reviewer grant",
+    ),
+    _p(
+        "GET",
+        "/api/v1/platform/payments/exceptions",
+        _P98B,
+        "platform (payment.read)",
+        "bounded exception discovery",
+    ),
+    _p(
+        "GET",
+        "/api/v1/platform/payments/{payment_id}",
+        _P98B,
+        "platform (payment.read)",
+        "safe exact detail and bounded operation timeline",
+    ),
+    _p(
+        "POST",
+        "/api/v1/platform/payment-operations/{operation_id}/reconcile",
+        _P98B,
+        "platform (payment.operate)",
+        "same durable UNKNOWN operation identity only",
     ),
     # ---- Customer provisioning & safe read models — bound in THIS PR (9.0.B) ----
     _p("GET", "/api/v1/me/trip-requests", _P0B, "customer (own; safe projection)"),

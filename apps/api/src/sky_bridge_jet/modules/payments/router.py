@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -21,8 +21,12 @@ from sky_bridge_jet.modules.iam.dependencies import (
     CurrentPrincipal,
     require_permission,
 )
-from sky_bridge_jet.modules.iam.domain import Permission
-from sky_bridge_jet.modules.payments.domain import PaymentConflictError
+from sky_bridge_jet.modules.iam.domain import AuthorizationError, Permission
+from sky_bridge_jet.modules.payments.domain import (
+    PaymentConflictError,
+    PaymentOperationResult,
+    PaymentOperationType,
+)
 from sky_bridge_jet.modules.payments.models import Payment, PaymentOperation
 from sky_bridge_jet.modules.payments.provider import (
     PaymentProviderError,
@@ -36,6 +40,9 @@ from sky_bridge_jet.modules.payments.schemas import (
     PaymentCapture,
     PaymentResponse,
     PaymentVoid,
+    PlatformPaymentDetailResponse,
+    PlatformPaymentExceptionResponse,
+    PlatformPaymentOperationResponse,
     RefundCreate,
     RefundResponse,
 )
@@ -50,7 +57,18 @@ _ERR = {"model": ErrorResponse}
 _REQUIRE_PAYMENT_REFUND = require_permission(Permission.PAYMENT_REFUND)
 # Internal payment operations (create/authorize/capture/void) are platform-only
 # (Phase 9.0.A-3): payment.operate is held solely by PLATFORM_ADMIN and PRODUCT_OWNER.
-_REQUIRE_PAYMENT_OPERATE = require_permission(Permission.PAYMENT_OPERATE)
+
+
+def _require_platform_payment_permission(permission: Permission) -> Any:
+    def _dependency(principal: CurrentPrincipal) -> None:
+        if not access.has_platform_permission(principal, permission):
+            raise AuthorizationError("Platform payment access is required")
+
+    return Depends(_dependency)
+
+
+_REQUIRE_PAYMENT_OPERATE = _require_platform_payment_permission(Permission.PAYMENT_OPERATE)
+_REQUIRE_PAYMENT_READ = _require_platform_payment_permission(Permission.PAYMENT_READ)
 
 
 def _correlation(request: Request) -> str | None:
@@ -140,6 +158,101 @@ def _refund(operation: PaymentOperation, currency: str) -> RefundResponse:
         provider_reference=operation.provider_reference,
         failure_code=operation.failure_code,
         created_at=operation.created_at,
+    )
+
+
+def _platform_operation(operation: PaymentOperation) -> PlatformPaymentOperationResponse:
+    return PlatformPaymentOperationResponse.model_validate(operation)
+
+
+@router.get(
+    "/platform/payments/exceptions",
+    response_model=list[PlatformPaymentExceptionResponse],
+    operation_id="listPlatformPaymentExceptions",
+    dependencies=[_REQUIRE_PAYMENT_READ],
+)
+def list_platform_payment_exceptions(
+    session: DatabaseSession,
+    result: Annotated[list[PaymentOperationResult] | None, Query()] = None,
+    operation: PaymentOperationType | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[PlatformPaymentExceptionResponse]:
+    selected_results = result or [
+        PaymentOperationResult.PENDING,
+        PaymentOperationResult.UNKNOWN,
+        PaymentOperationResult.FAILED,
+    ]
+    rows = PaymentService(session).list_platform_exceptions(
+        results=selected_results, operation=operation, limit=limit, offset=offset
+    )
+    return [
+        PlatformPaymentExceptionResponse(
+            **_platform_operation(item).model_dump(),
+            booking_id=payment.booking_id,
+            payment_reference=payment.reference,
+            payment_status=payment.status,
+            currency=payment.currency,
+            total_amount_minor=payment.total_amount_minor,
+            authorized_amount_minor=payment.authorized_amount_minor,
+            captured_amount_minor=payment.captured_amount_minor,
+            refunded_amount_minor=payment.refunded_amount_minor,
+            can_reconcile=item.result is PaymentOperationResult.UNKNOWN
+            and item.operation is not PaymentOperationType.REFUND,
+        )
+        for item, payment in rows
+    ]
+
+
+@router.get(
+    "/platform/payments/{payment_id}",
+    response_model=PlatformPaymentDetailResponse,
+    responses={404: _ERR},
+    operation_id="getPlatformPaymentDetail",
+    dependencies=[_REQUIRE_PAYMENT_READ],
+)
+def get_platform_payment_detail(
+    payment_id: UUID,
+    session: DatabaseSession,
+    operation_limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    operation_offset: Annotated[int, Query(ge=0)] = 0,
+) -> PlatformPaymentDetailResponse:
+    payment, operations = PaymentService(session).get_platform_detail(
+        payment_id, limit=operation_limit, offset=operation_offset
+    )
+    return PlatformPaymentDetailResponse(
+        **PaymentResponse.model_validate(payment).model_dump(exclude={"client_action"}),
+        operations=[_platform_operation(item) for item in operations],
+    )
+
+
+@router.post(
+    "/platform/payment-operations/{operation_id}/reconcile",
+    response_model=PlatformPaymentDetailResponse,
+    responses={404: _ERR, 409: _ERR},
+    operation_id="reconcilePlatformPaymentOperation",
+    dependencies=[_REQUIRE_PAYMENT_OPERATE],
+)
+def reconcile_platform_payment_operation(
+    operation_id: UUID,
+    request: Request,
+    principal: CurrentPrincipal,
+    session: DatabaseSession,
+) -> PlatformPaymentDetailResponse:
+    hook = access.payment_operation_hook(
+        principal,
+        permission=Permission.PAYMENT_OPERATE,
+        action="reconcilePlatformPaymentOperation",
+        resource_type="payment_operation",
+        resource_reference=operation_id,
+        correlation_id=_correlation(request),
+    )
+    service = PaymentService(session)
+    payment = service.reconcile_operation(operation_id, on_commit=hook)
+    payment, operations = service.get_platform_detail(payment.id, limit=100, offset=0)
+    return PlatformPaymentDetailResponse(
+        **PaymentResponse.model_validate(payment).model_dump(exclude={"client_action"}),
+        operations=[_platform_operation(item) for item in operations],
     )
 
 
