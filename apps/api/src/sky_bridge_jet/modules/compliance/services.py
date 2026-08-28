@@ -32,6 +32,9 @@ from sky_bridge_jet.modules.compliance.repositories import (
     ComplianceEvidenceRepository,
     OperatorAdmissionRepository,
     OperatorAircraftAuthorizationRepository,
+    PlatformAdmissionRecord,
+    PlatformAuthorizationRecord,
+    PlatformEvidenceRecord,
 )
 from sky_bridge_jet.modules.compliance.schemas import (
     AdmissionReviewAction,
@@ -207,6 +210,22 @@ class ComplianceService:
             raise _not_found("Operator admission")
         return admission
 
+    def get_platform_admission(self, admission_id: UUID) -> PlatformAdmissionRecord:
+        admission = self.admissions.get(admission_id)
+        if admission is None:
+            raise _not_found("Operator admission")
+        operator = self.operators.get(admission.operator_id)
+        if operator is None:
+            raise _not_found("Operator")
+        return PlatformAdmissionRecord(
+            admission, operator.legal_name, operator.trading_name, operator.country_code
+        )
+
+    def list_platform_admissions(
+        self, *, status: OperatorAdmissionStatus | None, limit: int, offset: int
+    ) -> Sequence[PlatformAdmissionRecord]:
+        return self.admissions.list_platform_review(status=status, limit=limit, offset=offset)
+
     # -- Evidence -----------------------------------------------------------
 
     def submit_evidence(
@@ -308,6 +327,24 @@ class ComplianceService:
         if evidence is None:
             raise _not_found("Evidence")
         return evidence
+
+    def get_platform_evidence(self, evidence_id: UUID) -> PlatformEvidenceRecord:
+        evidence = self.get_evidence(evidence_id)
+        operator = self.operators.get(evidence.operator_id)
+        if operator is None:
+            raise _not_found("Operator")
+        aircraft = self.aircraft.get(evidence.aircraft_id) if evidence.aircraft_id else None
+        return PlatformEvidenceRecord(
+            evidence,
+            operator.legal_name,
+            operator.trading_name,
+            aircraft.registration if aircraft is not None else None,
+        )
+
+    def list_platform_evidence(
+        self, *, status: EvidenceStatus | None, limit: int, offset: int
+    ) -> Sequence[PlatformEvidenceRecord]:
+        return self.evidence.list_platform_review(status=status, limit=limit, offset=offset)
 
     def list_evidence(self, operator_id: UUID) -> list[ComplianceEvidence]:
         if self.operators.get(operator_id) is None:
@@ -418,6 +455,28 @@ class ComplianceService:
             raise _not_found("Aircraft authorization")
         return authorization
 
+    def get_platform_authorization(self, authorization_id: UUID) -> PlatformAuthorizationRecord:
+        authorization = self.authorizations.get(authorization_id)
+        if authorization is None:
+            raise _not_found("Aircraft authorization")
+        operator = self.operators.get(authorization.operator_id)
+        aircraft = self.aircraft.get(authorization.aircraft_id)
+        if operator is None or aircraft is None:
+            raise _not_found("Aircraft authorization")
+        return PlatformAuthorizationRecord(
+            authorization,
+            operator.legal_name,
+            operator.trading_name,
+            aircraft.registration,
+            aircraft.manufacturer,
+            aircraft.model,
+        )
+
+    def list_platform_authorizations(
+        self, *, status: AircraftAuthorizationStatus | None, limit: int, offset: int
+    ) -> Sequence[PlatformAuthorizationRecord]:
+        return self.authorizations.list_platform_review(status=status, limit=limit, offset=offset)
+
     # -- Eligibility (reads) ------------------------------------------------
 
     def operator_eligibility(self, operator_id: UUID) -> EligibilityDecision:
@@ -449,9 +508,9 @@ class ComplianceService:
     # -- Audit --------------------------------------------------------------
 
     def list_audit_events(
-        self, entity_type: ComplianceEntityType, entity_id: UUID
+        self, entity_type: ComplianceEntityType, entity_id: UUID, *, limit: int | None = None
     ) -> Sequence[ComplianceAuditEvent]:
-        return self.audit.list_for_entity(entity_type, entity_id)
+        return self.audit.list_for_entity(entity_type, entity_id, limit=limit)
 
     def _audit(
         self,

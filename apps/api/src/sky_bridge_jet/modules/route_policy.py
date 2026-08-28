@@ -46,6 +46,8 @@ class Disposition(StrEnum):
     PHASE_9_1A_BOUND = "PHASE_9_1A_BOUND"
     # Customer-owned payment initiation boundary (Phase 9.6.B0).
     PHASE_9_6B0_BOUND = "PHASE_9_6B0_BOUND"
+    # Bounded internal platform compliance review center (Phase 9.8.A).
+    PHASE_9_8A_BOUND = "PHASE_9_8A_BOUND"
 
 
 @dataclass(frozen=True)
@@ -69,6 +71,7 @@ _P3 = Disposition.PHASE_9_0A_3_BOUND
 _P0B = Disposition.PHASE_9_0B_BOUND
 _P1A = Disposition.PHASE_9_1A_BOUND
 _P96B0 = Disposition.PHASE_9_6B0_BOUND
+_P98A = Disposition.PHASE_9_8A_BOUND
 
 ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
     # ---- Platform / documentation / discovery (public) --------------------
@@ -342,6 +345,69 @@ ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
         _P1A,
         "customer-self",
         "authenticated + CSRF + rate-limited; server-derived identity; never public",
+    ),
+    # ---- Platform compliance review center (Phase 9.8.A) -----------------
+    _p("GET", "/api/v1/platform/compliance/admissions", _P98A, "platform compliance reviewer"),
+    _p(
+        "GET",
+        "/api/v1/platform/compliance/admissions/{admission_id}",
+        _P98A,
+        "platform compliance reviewer",
+    ),
+    _p(
+        "POST",
+        "/api/v1/platform/compliance/admissions/{admission_id}/review",
+        _P98A,
+        "platform compliance reviewer",
+    ),
+    _p(
+        "GET",
+        "/api/v1/platform/compliance/admissions/{admission_id}/audit-events",
+        _P98A,
+        "platform compliance reviewer",
+    ),
+    _p("GET", "/api/v1/platform/compliance/evidence", _P98A, "platform compliance reviewer"),
+    _p(
+        "GET",
+        "/api/v1/platform/compliance/evidence/{evidence_id}",
+        _P98A,
+        "platform compliance reviewer",
+    ),
+    _p(
+        "POST",
+        "/api/v1/platform/compliance/evidence/{evidence_id}/review",
+        _P98A,
+        "platform compliance reviewer",
+    ),
+    _p(
+        "GET",
+        "/api/v1/platform/compliance/evidence/{evidence_id}/audit-events",
+        _P98A,
+        "platform compliance reviewer",
+    ),
+    _p(
+        "GET",
+        "/api/v1/platform/compliance/aircraft-authorizations",
+        _P98A,
+        "platform compliance reviewer",
+    ),
+    _p(
+        "GET",
+        "/api/v1/platform/compliance/aircraft-authorizations/{authorization_id}",
+        _P98A,
+        "platform compliance reviewer",
+    ),
+    _p(
+        "POST",
+        "/api/v1/platform/compliance/aircraft-authorizations/{authorization_id}/review",
+        _P98A,
+        "platform compliance reviewer",
+    ),
+    _p(
+        "GET",
+        "/api/v1/platform/compliance/aircraft-authorizations/{authorization_id}/audit-events",
+        _P98A,
+        "platform compliance reviewer",
     ),
 )
 

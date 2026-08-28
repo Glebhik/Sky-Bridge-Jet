@@ -1304,6 +1304,123 @@ a.resource-list__reference:hover {
   }
 }
 
+/* Phase 9.8.A — minimal internal platform compliance workspace. */
+.platform {
+  min-height: 100vh;
+  background: #07111b;
+  color: #eef4f7;
+  padding-bottom: 4rem;
+}
+.platform-nav {
+  display: flex;
+  gap: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 1rem max(1rem, calc((100vw - 72rem) / 2));
+}
+.platform-nav a,
+.platform a {
+  color: #bcddec;
+}
+.platform .container {
+  padding-top: 2rem;
+}
+.platform-tabs,
+.platform-toolbar,
+.platform-pagination,
+.platform-actions,
+.platform-confirm > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+.platform-toolbar select {
+  min-height: 2.75rem;
+  border: 1px solid #476173;
+  border-radius: 0.45rem;
+  background: #0d1c28;
+  color: #fff;
+  padding: 0.5rem 0.75rem;
+}
+.platform-review-list {
+  display: grid;
+  gap: 1rem;
+}
+.platform-review-card,
+.platform-detail,
+.platform-decision,
+.platform-audit {
+  background: #0d1c28;
+  border-color: #304858;
+  overflow-wrap: anywhere;
+}
+.platform-review-card > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.platform-review-card h2,
+.platform-detail h2,
+.platform-decision h2,
+.platform-audit h2 {
+  margin-top: 0;
+  color: #fff;
+}
+.platform-detail dl {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.35fr) 1fr;
+  gap: 0.55rem 1rem;
+}
+.platform-detail dt {
+  color: #9eb1bd;
+}
+.platform-detail dd {
+  margin: 0;
+}
+.platform-confirm {
+  border: 1px solid #b68f63;
+  border-radius: 0.65rem;
+  padding: 1rem;
+}
+.platform-confirm textarea {
+  width: 100%;
+  min-height: 6rem;
+  background: #07111b;
+  border: 1px solid #597183;
+  border-radius: 0.4rem;
+  color: #fff;
+  padding: 0.65rem;
+}
+.platform-audit li {
+  margin-bottom: 0.75rem;
+}
+.platform-audit li span {
+  display: block;
+  color: #aebdc6;
+}
+.platform :focus-visible {
+  outline: 3px solid #7dd3fc;
+  outline-offset: 2px;
+}
+@media (min-width: 48rem) {
+  .platform-review-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 30rem) {
+  .platform-tabs .button,
+  .platform-toolbar .button,
+  .platform-actions .button {
+    width: 100%;
+  }
+  .platform-detail dl {
+    grid-template-columns: 1fr;
+  }
+}
+
 .operator-compliance .container {
   display: grid;
   gap: 1.25rem;

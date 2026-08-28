@@ -120,6 +120,29 @@ class EvidenceReviewCommand(ApiModel):
     note: Note | None = None
 
 
+class PlatformAdmissionReview(ApiModel):
+    """Browser-safe decision input; actor identity is derived from the principal."""
+
+    model_config = ConfigDict(extra="forbid")
+    action: AdmissionReviewAction
+    reason_code: ReviewReasonCode | None = None
+    note: Note | None = None
+
+
+class PlatformEvidenceReview(ApiModel):
+    model_config = ConfigDict(extra="forbid")
+    action: EvidenceReviewAction
+    reason_code: ReviewReasonCode | None = None
+    note: Note | None = None
+
+
+class PlatformAuthorizationReview(ApiModel):
+    model_config = ConfigDict(extra="forbid")
+    action: AuthorizationReviewAction
+    reason_code: ReviewReasonCode | None = None
+    note: Note | None = None
+
+
 # -- Responses --------------------------------------------------------------
 
 
@@ -185,6 +208,66 @@ class AuditEventResponse(ApiModel):
     reason_code: ReviewReasonCode | None
     note: str | None
     created_at: datetime
+
+
+class PlatformAdmissionView(ApiModel):
+    id: UUID
+    operator_id: UUID
+    operator_legal_name: str
+    operator_trading_name: str | None
+    operator_country_code: str
+    status: OperatorAdmissionStatus
+    reason_code: ReviewReasonCode | None
+    review_note: str | None
+    submitted_at: datetime | None
+    reviewed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PlatformEvidenceView(ApiModel):
+    id: UUID
+    operator_id: UUID
+    operator_legal_name: str
+    operator_trading_name: str | None
+    aircraft_id: UUID | None
+    aircraft_registration: str | None
+    evidence_type: EvidenceType
+    status: EvidenceStatus
+    effective_status: EffectiveEvidenceStatus
+    authority_basis: AuthorityBasis | None
+    reference_number: str | None
+    issuing_authority: str | None
+    jurisdiction: str | None
+    insurer_name: str | None
+    has_storage_object: bool
+    effective_date: datetime | None
+    expiry_date: datetime | None
+    submitted_at: datetime | None
+    reviewed_at: datetime | None
+    review_reason_code: ReviewReasonCode | None
+    review_note: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PlatformAuthorizationView(ApiModel):
+    id: UUID
+    operator_id: UUID
+    operator_legal_name: str
+    operator_trading_name: str | None
+    aircraft_id: UUID
+    aircraft_registration: str
+    aircraft_manufacturer: str
+    aircraft_model: str
+    status: AircraftAuthorizationStatus
+    authority_basis: AuthorityBasis
+    reason_code: ReviewReasonCode | None
+    review_note: str | None
+    submitted_at: datetime | None
+    reviewed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
 
 
 class OperatorEligibilityResponse(ApiModel):

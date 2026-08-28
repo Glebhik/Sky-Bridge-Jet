@@ -53,6 +53,9 @@ export const PROXY_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   "me/operator-aircraft": ["GET", "POST"],
   "me/operator-compliance-readiness": ["GET"],
   "me/operator-offers": ["POST"],
+  "platform/compliance/admissions": ["GET"],
+  "platform/compliance/evidence": ["GET"],
+  "platform/compliance/aircraft-authorizations": ["GET"],
   // Phase 9.3.B customer write journey (create DRAFT → submit same DRAFT). Exact paths only.
   passengers: ["POST"],
   "trip-requests": ["POST"],
@@ -92,6 +95,54 @@ export interface ProxyPattern {
  * each route is bound to exactly its listed method.
  */
 export const PROXY_PATTERN_ALLOWLIST: readonly ProxyPattern[] = [
+  {
+    segments: ["platform", "compliance", "admissions", ":uuid"],
+    methods: ["GET"],
+  },
+  {
+    segments: ["platform", "compliance", "admissions", ":uuid", "review"],
+    methods: ["POST"],
+  },
+  {
+    segments: ["platform", "compliance", "admissions", ":uuid", "audit-events"],
+    methods: ["GET"],
+  },
+  {
+    segments: ["platform", "compliance", "evidence", ":uuid"],
+    methods: ["GET"],
+  },
+  {
+    segments: ["platform", "compliance", "evidence", ":uuid", "review"],
+    methods: ["POST"],
+  },
+  {
+    segments: ["platform", "compliance", "evidence", ":uuid", "audit-events"],
+    methods: ["GET"],
+  },
+  {
+    segments: ["platform", "compliance", "aircraft-authorizations", ":uuid"],
+    methods: ["GET"],
+  },
+  {
+    segments: [
+      "platform",
+      "compliance",
+      "aircraft-authorizations",
+      ":uuid",
+      "review",
+    ],
+    methods: ["POST"],
+  },
+  {
+    segments: [
+      "platform",
+      "compliance",
+      "aircraft-authorizations",
+      ":uuid",
+      "audit-events",
+    ],
+    methods: ["GET"],
+  },
   { segments: ["me", "operator-aircraft", ":uuid"], methods: ["GET"] },
   { segments: ["me", "operator-bookings", ":uuid"], methods: ["GET"] },
   { segments: ["trip-requests", ":uuid"], methods: ["GET"] },
