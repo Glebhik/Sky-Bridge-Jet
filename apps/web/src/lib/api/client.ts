@@ -27,6 +27,7 @@ import type {
   OperatorOpportunity,
   OperatorBookingReadView,
   OperatorBookingStatus,
+  OperatorComplianceReadiness,
 } from "@/lib/api/types";
 
 /**
@@ -409,6 +410,14 @@ export const portalApi = {
       organizationId,
       signal,
     }),
+  getOperatorComplianceReadiness: (
+    organizationId: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<OperatorComplianceReadiness>(
+      "me/operator-compliance-readiness",
+      { organizationId, signal },
+    ),
   createOperatorOffer: (
     body: OperatorOfferCreate,
     organizationId: string,

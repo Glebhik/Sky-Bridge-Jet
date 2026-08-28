@@ -219,6 +219,36 @@ export interface OperatorAircraft {
   readonly eligible: boolean;
 }
 
+export type OperatorAdmissionStatus =
+  | "DRAFT"
+  | "SUBMITTED"
+  | "UNDER_REVIEW"
+  | "APPROVED"
+  | "REJECTED"
+  | "SUSPENDED";
+
+export type EligibilityReasonCode =
+  | "OPERATOR_NOT_ADMITTED"
+  | "OPERATOR_UNDER_REVIEW"
+  | "OPERATOR_REJECTED"
+  | "OPERATOR_SUSPENDED"
+  | "AUTHORITY_NOT_VERIFIED"
+  | "AUTHORITY_EXPIRED"
+  | "INSURANCE_NOT_VERIFIED"
+  | "INSURANCE_EXPIRED"
+  | "AIRCRAFT_NOT_AUTHORIZED"
+  | "AIRCRAFT_AUTHORIZATION_SUSPENDED"
+  | "AIRCRAFT_NOT_OPERATED_BY_OPERATOR";
+
+/** Exact C0 operator-safe projection. No evidence, review, or internal identity fields. */
+export interface OperatorComplianceReadiness {
+  readonly admission_status: OperatorAdmissionStatus | null;
+  readonly marketplace_eligible: boolean;
+  readonly blockers: readonly EligibilityReasonCode[];
+  readonly created_at: string | null;
+  readonly updated_at: string | null;
+}
+
 export interface OperatorOfferCommand {
   readonly currency?: "EUR" | "GBP" | "USD";
   readonly operator_amount_minor?: number;
