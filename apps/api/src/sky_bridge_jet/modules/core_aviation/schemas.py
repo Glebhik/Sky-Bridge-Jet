@@ -201,6 +201,28 @@ class AircraftCreate(ApiModel):
         return normalize_required_text(value, field_name="Aircraft identity")
 
 
+class ActiveOperatorAircraftCreate(ApiModel):
+    """Browser-safe aircraft command; ownership is derived from the active operator."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    manufacturer: Annotated[str, Field(min_length=1, max_length=100)]
+    model: Annotated[str, Field(min_length=1, max_length=100)]
+    category: AircraftCategory
+    registration: Annotated[str, Field(max_length=20)]
+    passenger_capacity: Annotated[int, Field(gt=0, le=1_000)]
+
+    @field_validator("registration")
+    @classmethod
+    def normalize_aircraft_registration(cls, value: str) -> str:
+        return normalize_registration(value)
+
+    @field_validator("manufacturer", "model")
+    @classmethod
+    def normalize_aircraft_identity(cls, value: str) -> str:
+        return normalize_required_text(value, field_name="Aircraft identity")
+
+
 class AircraftResponse(ApiModel):
     id: UUID
     operator_id: UUID

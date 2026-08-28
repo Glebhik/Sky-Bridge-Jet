@@ -135,6 +135,20 @@ ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
     ),
     _p(
         "POST",
+        "/api/v1/me/operator-aircraft",
+        _AB,
+        "operator-admin",
+        "Phase 9.7.D0 active-operator aircraft command",
+    ),
+    _p(
+        "GET",
+        "/api/v1/me/operator-aircraft/{aircraft_id}",
+        _AB,
+        "operator",
+        "Phase 9.7.D0 active-operator-safe aircraft detail",
+    ),
+    _p(
+        "POST",
         "/api/v1/me/operator-offers",
         _AB,
         "operator",

@@ -27,10 +27,10 @@ def test_verified_route_counts() -> None:
     # (83 → 84; 79 → 80 ops). Phase 9.2.A adds one public route — the enumeration-safe
     # verification-resend endpoint (84 → 85; 80 → 81 ops).
     # Phase 9.7.A0 adds opportunity discovery; A1 adds active-operator aircraft read
-    # and its browser-safe Offer command.
-    assert len(registered) == 93, sorted(registered)
+    # and its browser-safe Offer command. D0 adds safe aircraft detail and create.
+    assert len(registered) == 95, sorted(registered)
     openapi_ops = {r for r in registered if r[1] not in DOCUMENTATION_ROUTES}
-    assert len(openapi_ops) == 89
+    assert len(openapi_ops) == 91
 
 
 def test_every_route_has_exactly_one_disposition() -> None:
