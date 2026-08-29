@@ -29,9 +29,9 @@ def test_verified_route_counts() -> None:
     # Phase 9.7.A0 adds opportunity discovery; A1 adds active-operator aircraft read
     # and its browser-safe Offer command. D0 adds safe aircraft detail and create.
     # Phase 10.B adds seven exact-resource pilot-governance routes.
-    assert len(registered) == 119, sorted(registered)
+    assert len(registered) == 122, sorted(registered)
     openapi_ops = {r for r in registered if r[1] not in DOCUMENTATION_ROUTES}
-    assert len(openapi_ops) == 115
+    assert len(openapi_ops) == 118
 
 
 def test_every_route_has_exactly_one_disposition() -> None:
@@ -78,6 +78,7 @@ def test_no_versioned_pending_route_is_public() -> None:
         Disposition.PHASE_9_8A_BOUND,
         Disposition.PHASE_9_8B_BOUND,
         Disposition.ALREADY_BOUND,
+        Disposition.PHASE_10C_BOUND,
     }
     for policy in ROUTE_POLICIES:
         if policy.disposition in protected:

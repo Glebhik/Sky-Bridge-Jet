@@ -184,6 +184,59 @@ class UserSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    identity_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    external_identity_link_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("external_identity_links.id", ondelete="RESTRICT"), nullable=True
+    )
+    provider_auth_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    mfa_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    assurance_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    provider_session_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class ExternalIdentityLink(Base):
+    """Trusted immutable mapping from a verified provider subject to one SBJ user."""
+
+    __tablename__ = "external_identity_links"
+    __table_args__ = (
+        UniqueConstraint("issuer", "subject", name="uq_external_identity_issuer_subject"),
+        UniqueConstraint("provider", "user_id", name="uq_external_identity_provider_user"),
+        Index("ix_external_identity_user_id", "user_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    issuer: Mapped[str] = mapped_column(String(512), nullable=False)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, server_default=func.now(), nullable=False
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PrivilegedAuthTransaction(Base):
+    """Short-lived one-time OIDC correlation state; contains no provider token."""
+
+    __tablename__ = "privileged_auth_transactions"
+    __table_args__ = (
+        UniqueConstraint("state_hash", name="uq_privileged_auth_transaction_state"),
+        Index("ix_privileged_auth_transaction_expires", "expires_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    state_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    nonce: Mapped[str] = mapped_column(String(128), nullable=False)
+    pkce_verifier: Mapped[str] = mapped_column(String(128), nullable=False)
+    return_path: Mapped[str] = mapped_column(String(255), nullable=False, default="/platform/pilot")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, server_default=func.now(), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class EmailVerificationToken(Base):

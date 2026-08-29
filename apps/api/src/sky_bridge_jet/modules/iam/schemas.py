@@ -75,6 +75,9 @@ class MeResponse(ApiModel):
     user: UserResponse
     memberships: list[MembershipView]
     permissions: list[str]
+    privileged_identity_provider: str | None = None
+    privileged_mfa_assured: bool = False
+    privileged_assurance_expires_at: datetime | None = None
 
 
 class LoginResponse(ApiModel):

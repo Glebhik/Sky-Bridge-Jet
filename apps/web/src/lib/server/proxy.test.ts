@@ -7,6 +7,7 @@ import {
   forwardToUpstream,
   operatorSafeOfferBody,
   validateProxyRequest,
+  normalizePrivilegedAuthLocation,
 } from "@/lib/server/proxy";
 
 const UPSTREAM = "http://api.internal:8000";
@@ -930,6 +931,22 @@ describe("forwardToUpstream — status/body fidelity and no leakage", () => {
     };
     expect(body.error.code).toBe("upstream_unavailable");
     expect(body.error.message).not.toContain("secret-host");
+  });
+
+  it("rewrites only the exact local privileged callback through the closed proxy", () => {
+    expect(
+      normalizePrivilegedAuthLocation(
+        "/api/v1/auth/platform/callback?state=opaque&code=opaque",
+      ),
+    ).toBe("/api/proxy/auth/platform/callback?state=opaque&code=opaque");
+    expect(
+      normalizePrivilegedAuthLocation(
+        "https://tenant.eu.auth0.com/authorize?x=1",
+      ),
+    ).toBe("https://tenant.eu.auth0.com/authorize?x=1");
+    expect(normalizePrivilegedAuthLocation("/api/v1/auth/login")).toBe(
+      "/api/v1/auth/login",
+    );
   });
 
   it("forwards the request body and never logs cookies/tokens", async () => {

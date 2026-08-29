@@ -11,6 +11,7 @@ dependencies = [
   "fastapi==0.141.1",
   "psycopg[binary]==3.3.4",
   "pydantic-settings==2.15.0",
+  "pyjwt[crypto]==2.10.1",
   "sqlalchemy==2.0.51",
   # Official Stripe SDK. Used only by RealStripeGateway (test-mode keys); CI and
   # unit/integration tests never require it at runtime (the fake gateway is used).

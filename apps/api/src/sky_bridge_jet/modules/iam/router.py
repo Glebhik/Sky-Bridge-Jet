@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
 from sky_bridge_jet.modules.iam.auth_email_delivery import deliver_verification_email
@@ -24,6 +24,11 @@ from sky_bridge_jet.modules.iam.domain import (
     OrganizationType,
     Permission,
     RateLimitedError,
+)
+from sky_bridge_jet.modules.iam.privileged_identity import build_privileged_identity_provider
+from sky_bridge_jet.modules.iam.privileged_services import (
+    PrivilegedIdentityService,
+    privileged_assurance_valid,
 )
 from sky_bridge_jet.modules.iam.provisioning import recover_personal_customer
 from sky_bridge_jet.modules.iam.ratelimit import RateLimiter
@@ -305,8 +310,10 @@ def logout_all(
 
 @router.get("/auth/me", response_model=MeResponse, responses={401: _ERR}, operation_id="getMe")
 def me(principal: CurrentPrincipal, session: DatabaseSession, settings: AppSettings) -> MeResponse:
-    user = AuthService(session, settings).users.get(principal.user_id)
+    service = AuthService(session, settings)
+    user = service.users.get(principal.user_id)
     assert user is not None
+    user_session = service.sessions.get_for_update(principal.session_id)
     memberships = [
         MembershipView(
             organization_id=m.organization_id,
@@ -319,7 +326,40 @@ def me(principal: CurrentPrincipal, session: DatabaseSession, settings: AppSetti
         user=UserResponse.model_validate(user),
         memberships=memberships,
         permissions=sorted(p.value for p in principal.all_permissions()),
+        privileged_identity_provider=(user_session.identity_provider if user_session else None),
+        privileged_mfa_assured=(
+            privileged_assurance_valid(user_session, settings) if user_session else False
+        ),
+        privileged_assurance_expires_at=(
+            user_session.assurance_expires_at if user_session else None
+        ),
     )
+
+
+@router.get("/auth/platform/login", responses={307: {"description": "Auth0 redirect"}})
+def platform_login(session: DatabaseSession, settings: AppSettings) -> RedirectResponse:
+    provider = build_privileged_identity_provider(settings)
+    url, _state = PrivilegedIdentityService(session, settings).create_transaction(provider)
+    return RedirectResponse(url=url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+
+@router.get("/auth/platform/callback", responses={303: {"description": "Staff workspace redirect"}})
+def platform_callback(
+    state: str,
+    code: str,
+    session: DatabaseSession,
+    settings: AppSettings,
+) -> RedirectResponse:
+    provider = build_privileged_identity_provider(settings)
+    _record, raw_token, csrf, return_path = PrivilegedIdentityService(session, settings).complete(
+        provider=provider, state=state, code=code
+    )
+    response = RedirectResponse(
+        url=f"{settings.web_public_origin}{return_path}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+    _set_session_cookies(response, settings, session_token=raw_token, csrf_token=csrf)
+    return response
 
 
 @router.post(

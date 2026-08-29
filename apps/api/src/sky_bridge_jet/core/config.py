@@ -7,7 +7,7 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
-Environment = Literal["development", "test", "production"]
+Environment = Literal["development", "test", "staging", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 DEFAULT_DEVELOPMENT_PASSWORD = "sky_bridge_jet_dev_only"
 DEFAULT_DATABASE_NAME = "sky_bridge_jet"
@@ -86,6 +86,19 @@ class Settings(BaseSettings):
     resend_api_key: str | None = None
     auth_email_from: str = "Sky Bridge Jet <no-reply@skybridgejet.disgroup.ie>"
     web_public_origin: str = "http://localhost:3000"
+    privileged_identity_provider: Literal["disabled", "fake", "auth0"] = "disabled"
+    auth0_issuer: str | None = None
+    auth0_client_id: str | None = None
+    auth0_client_secret: str | None = None
+    auth0_audience: str | None = None
+    auth0_callback_url: str | None = None
+    auth0_logout_url: str | None = None
+    auth0_allowed_algorithms: str = "RS256"
+    auth0_environment_id: str | None = None
+    privileged_session_inactivity_seconds: int = 60 * 30
+    privileged_session_absolute_seconds: int = 60 * 60 * 8
+    privileged_assurance_ttl_seconds: int = 60 * 60 * 8
+    fake_privileged_identity_code: str | None = None
 
     @property
     def cookie_secure_effective(self) -> bool:
@@ -122,6 +135,49 @@ class Settings(BaseSettings):
                 raise ValueError("DATABASE_NAME must be explicitly configured in production")
             if self.database_user == DEFAULT_DATABASE_USER:
                 raise ValueError("DATABASE_USER must be explicitly configured in production")
+        return self
+
+    @model_validator(mode="after")
+    def validate_privileged_identity(self) -> "Settings":
+        if self.app_environment in {"staging", "production"}:
+            if self.privileged_identity_provider != "auth0":
+                raise ValueError("Auth0 privileged identity is required in staging/production")
+        if self.privileged_identity_provider == "fake" and self.app_environment not in {
+            "development",
+            "test",
+        }:
+            raise ValueError("FAKE privileged identity is restricted to development/test")
+        if self.privileged_identity_provider == "auth0":
+            required = {
+                "AUTH0_ISSUER": self.auth0_issuer,
+                "AUTH0_CLIENT_ID": self.auth0_client_id,
+                "AUTH0_CALLBACK_URL": self.auth0_callback_url,
+                "AUTH0_ENVIRONMENT_ID": self.auth0_environment_id,
+            }
+            missing = [name for name, value in required.items() if not value]
+            if missing:
+                raise ValueError(f"Missing privileged identity configuration: {', '.join(missing)}")
+            assert self.auth0_issuer is not None
+            assert self.auth0_callback_url is not None
+            issuer = urlsplit(self.auth0_issuer)
+            callback = urlsplit(self.auth0_callback_url)
+            if issuer.scheme != "https" or not issuer.netloc or issuer.path not in {"", "/"}:
+                raise ValueError("AUTH0_ISSUER must be an HTTPS origin")
+            if callback.scheme not in {"http", "https"} or not callback.netloc:
+                raise ValueError("AUTH0_CALLBACK_URL must be absolute")
+            if self.app_environment in {"staging", "production"} and callback.scheme != "https":
+                raise ValueError("AUTH0_CALLBACK_URL must use HTTPS in staging/production")
+        if self.app_environment == "staging" and self.stripe_live_key_detected:
+            raise ValueError("A live Stripe secret key is not permitted in staging")
+        if (
+            min(
+                self.privileged_session_inactivity_seconds,
+                self.privileged_session_absolute_seconds,
+                self.privileged_assurance_ttl_seconds,
+            )
+            <= 0
+        ):
+            raise ValueError("Privileged session and assurance TTLs must be positive")
         return self
 
     @model_validator(mode="after")

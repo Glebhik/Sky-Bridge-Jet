@@ -18,6 +18,7 @@ from uuid import UUID, uuid4
 
 from fastapi import Request
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from sky_bridge_jet.db.session import SessionLocal
 from sky_bridge_jet.main import app
@@ -29,9 +30,11 @@ from sky_bridge_jet.modules.iam.domain import (
     UserStatus,
 )
 from sky_bridge_jet.modules.iam.models import (
+    ExternalIdentityLink,
     Organization,
     OrganizationMembership,
     User,
+    UserSession,
 )
 
 _PASSWORD = "CorrectHorse12"
@@ -88,6 +91,47 @@ def login(client: TestClient, email: str, password: str = _PASSWORD) -> None:
     resp = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     assert resp.status_code == 200, resp.text
     client.headers["X-CSRF-Token"] = resp.json()["csrf_token"]
+    # Existing platform fixtures represent already-MFA-assured staff. Phase 10.C keeps
+    # that intent explicit in the stored session; dedicated no-MFA tests use the raw
+    # password endpoint directly and prove denial.
+    with SessionLocal() as session, session.begin():
+        user = session.scalars(select(User).where(User.normalized_email == email.lower())).one()
+        platform_membership = session.scalars(
+            select(OrganizationMembership)
+            .join(Organization, Organization.id == OrganizationMembership.organization_id)
+            .where(
+                OrganizationMembership.user_id == user.id,
+                Organization.organization_type == OrganizationType.PLATFORM,
+            )
+        ).first()
+        if platform_membership is not None:
+            link = session.scalars(
+                select(ExternalIdentityLink).where(
+                    ExternalIdentityLink.provider == "fake",
+                    ExternalIdentityLink.user_id == user.id,
+                )
+            ).first()
+            if link is None:
+                link = ExternalIdentityLink(
+                    user_id=user.id,
+                    provider="fake",
+                    issuer="urn:sky-bridge-jet:test-identity",
+                    subject=f"test-user:{user.id}",
+                )
+                session.add(link)
+                session.flush()
+            record = session.scalars(
+                select(UserSession)
+                .where(UserSession.user_id == user.id)
+                .order_by(UserSession.created_at.desc())
+            ).first()
+            assert record is not None
+            now = datetime.now(UTC)
+            record.identity_provider = "fake"
+            record.external_identity_link_id = link.id
+            record.provider_auth_time = now
+            record.mfa_verified_at = now
+            record.assurance_expires_at = now + timedelta(hours=8)
 
 
 def _grant_membership(

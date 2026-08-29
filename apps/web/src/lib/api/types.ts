@@ -36,6 +36,9 @@ export interface MeResponse {
   readonly user: User;
   readonly memberships: readonly Membership[];
   readonly permissions: readonly string[];
+  readonly privileged_identity_provider?: string | null;
+  readonly privileged_mfa_assured?: boolean;
+  readonly privileged_assurance_expires_at?: string | null;
 }
 
 export type PilotMode = "INTERNAL_ONLY" | "CONTROLLED_EXTERNAL" | "PAUSED";

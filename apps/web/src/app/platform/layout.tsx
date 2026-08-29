@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { Alert, Container } from "@/components/ui/primitives";
-import { buildLoginRedirect } from "@/lib/auth/redirect";
 import { getServerSession } from "@/lib/session/server";
 
 export default async function PlatformLayout({
@@ -16,7 +15,7 @@ export default async function PlatformLayout({
   if (session.status === "unauthenticated") {
     const pathname =
       (await headers()).get("x-portal-pathname") ?? "/platform/compliance";
-    redirect(buildLoginRedirect(pathname));
+    redirect(`/staff-sign-in?next=${encodeURIComponent(pathname)}`);
   }
   if (session.status !== "authenticated") {
     return (
@@ -30,6 +29,16 @@ export default async function PlatformLayout({
   const platformMember = session.memberships.some(
     (item) => item.organization_type === "PLATFORM",
   );
+  if (!session.privilegedMfaAssured) {
+    return (
+      <Container>
+        <Alert tone="error" title="Staff authentication required">
+          Re-authenticate with MFA to access the platform workspace.{" "}
+          <Link href="/api/proxy/auth/platform/login">Staff sign in</Link>
+        </Alert>
+      </Container>
+    );
+  }
   const canReview = session.permissions.includes("compliance.review");
   const canReadPayments = session.permissions.includes("payment.read");
   const canReadPilot = session.permissions.includes("pilot.read");
@@ -44,6 +53,11 @@ export default async function PlatformLayout({
   }
   return (
     <main id="platform-main" className="platform platform-main">
+      {process.env.APP_ENVIRONMENT === "staging" ? (
+        <Alert tone="warning" title="STAGING — CONTROLLED PILOT">
+          NO REAL MONEY
+        </Alert>
+      ) : null}
       <nav className="platform-nav" aria-label="Platform workspace">
         {canReview ? <Link href="/platform/compliance">Compliance</Link> : null}
         {canReadPayments ? (

@@ -26,6 +26,7 @@ from sky_bridge_jet.modules.pilot_governance.router import register_pilot_except
 
 configure_logging(get_settings().log_level)
 logger = logging.getLogger(__name__)
+EXPECTED_ALEMBIC_REVISION = "20260831_0014"
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
@@ -86,15 +87,22 @@ def health() -> dict[str, str]:
 
 @app.get("/ready", tags=["platform"])
 def ready(session: DatabaseSession) -> dict[str, str]:
-    """Return readiness only when PostgreSQL accepts a lightweight query."""
+    """Return readiness only when PostgreSQL is reachable and schema-compatible."""
     try:
         session.execute(text("SELECT 1"))
+        revision = session.scalar(text("SELECT version_num FROM alembic_version"))
     except SQLAlchemyError:
         logger.warning("database_unavailable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"status": "unavailable"},
         ) from None
+    if revision != EXPECTED_ALEMBIC_REVISION:
+        logger.warning("database_migration_mismatch")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"status": "migration_mismatch"},
+        )
     return {"status": "ok"}
 
 

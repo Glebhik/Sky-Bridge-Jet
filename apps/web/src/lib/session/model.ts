@@ -28,6 +28,9 @@ export type SessionSnapshot =
       readonly memberships: readonly Membership[];
       readonly customerOrganizations: readonly CustomerOrganization[];
       readonly permissions: readonly string[];
+      readonly privilegedIdentityProvider?: string | null;
+      readonly privilegedMfaAssured?: boolean;
+      readonly privilegedAssuranceExpiresAt?: string | null;
     }
   | { readonly status: "unauthenticated" }
   | { readonly status: "error"; readonly transient: true };
@@ -49,6 +52,9 @@ export function snapshotFromMe(me: MeResponse): SessionSnapshot {
     memberships: me.memberships,
     customerOrganizations: deriveCustomerOrganizations(me.memberships),
     permissions: me.permissions,
+    privilegedIdentityProvider: me.privileged_identity_provider ?? null,
+    privilegedMfaAssured: me.privileged_mfa_assured ?? false,
+    privilegedAssuranceExpiresAt: me.privileged_assurance_expires_at ?? null,
   };
 }
 
