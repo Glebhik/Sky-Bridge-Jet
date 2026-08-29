@@ -166,6 +166,9 @@ class BookingService:
             booking.operator_confirmation_reference = data.confirmation_reference
             booking.confirmation_note = data.note
             self.session.flush()
+            from sky_bridge_jet.modules.flight_operations.services import FlightOperationService
+
+            FlightOperationService(self.session).ensure_for_confirmed_booking(booking.id)
             trip = self.trips.get(booking.trip_request_id)
             if trip is None:
                 raise _not_found("Trip request")
