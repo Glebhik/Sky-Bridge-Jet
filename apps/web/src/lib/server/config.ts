@@ -44,6 +44,8 @@ export const PROXY_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   "auth/password-reset": ["POST"],
   "auth/password-reset/confirm": ["POST"],
   "auth/customer-account/recover": ["POST"],
+  "auth/platform/login": ["GET"],
+  "auth/platform/callback": ["GET"],
   "me/trip-requests": ["GET"],
   "me/bookings": ["GET"],
   "me/payments": ["GET"],
@@ -61,6 +63,7 @@ export const PROXY_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   "platform/pilot/state": ["GET", "POST"],
   "platform/pilot/participants": ["GET", "POST"],
   "platform/pilot/audits": ["GET"],
+  "platform/operations/diagnostics": ["GET"],
   // Phase 9.3.B customer write journey (create DRAFT → submit same DRAFT). Exact paths only.
   passengers: ["POST"],
   "trip-requests": ["POST"],

@@ -13,6 +13,9 @@ class AvailableSession:
     def execute(self, _statement: object) -> None:
         return None
 
+    def scalar(self, _statement: object) -> str:
+        return "20260831_0014"
+
 
 class UnavailableSession:
     def execute(self, _statement: object) -> None:

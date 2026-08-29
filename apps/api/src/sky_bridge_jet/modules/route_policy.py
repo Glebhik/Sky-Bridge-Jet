@@ -51,6 +51,7 @@ class Disposition(StrEnum):
     # Bounded internal payment exception and reconciliation operations (Phase 9.8.B).
     PHASE_9_8B_BOUND = "PHASE_9_8B_BOUND"
     PHASE_10B_BOUND = "PHASE_10B_BOUND"
+    PHASE_10C_BOUND = "PHASE_10C_BOUND"
 
 
 @dataclass(frozen=True)
@@ -77,8 +78,17 @@ _P96B0 = Disposition.PHASE_9_6B0_BOUND
 _P98A = Disposition.PHASE_9_8A_BOUND
 _P98B = Disposition.PHASE_9_8B_BOUND
 _P10B = Disposition.PHASE_10B_BOUND
+_P10C = Disposition.PHASE_10C_BOUND
 
 ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
+    _p(
+        "GET",
+        "/api/v1/platform/operations/diagnostics",
+        _P10C,
+        "platform admin/product owner with MFA",
+    ),
+    _p("GET", "/api/v1/auth/platform/login", _PUB, "anonymous", "OIDC initiation"),
+    _p("GET", "/api/v1/auth/platform/callback", _PUB, "provider", "OIDC callback"),
     _p("GET", "/api/v1/platform/pilot/state", _P10B, "platform (pilot.read)"),
     _p("POST", "/api/v1/platform/pilot/state", _P10B, "platform (pilot.manage)"),
     _p("GET", "/api/v1/platform/pilot/participants", _P10B, "platform (pilot.read)"),

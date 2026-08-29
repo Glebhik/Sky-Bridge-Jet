@@ -19,6 +19,14 @@ SETTINGS_ENVIRONMENT_VARIABLES = (
     "LOG_LEVEL",
 )
 
+PRODUCTION_AUTH0 = {
+    "privileged_identity_provider": "auth0",
+    "auth0_issuer": "https://sky-bridge-jet-production.eu.auth0.com",
+    "auth0_client_id": "production-client-id",
+    "auth0_callback_url": "https://app.skybridgejet.example/api/v1/auth/platform/callback",
+    "auth0_environment_id": "production",
+}
+
 
 def settings_without_environment(monkeypatch: pytest.MonkeyPatch, **values: object) -> Settings:
     for variable in SETTINGS_ENVIRONMENT_VARIABLES:
@@ -48,6 +56,7 @@ def test_production_accepts_explicit_database_url_without_component_values(
         monkeypatch,
         app_environment="production",
         database_url="postgresql+psycopg://api:strong-password@postgres.internal:5432/app",
+        **PRODUCTION_AUTH0,
     )
 
     assert settings.database_url_for_sync == (
@@ -65,6 +74,7 @@ def test_production_accepts_explicit_non_default_component_configuration(
         database_password="a-strong-non-default-value",
         database_name="production_app",
         database_user="production_api",
+        **PRODUCTION_AUTH0,
     )
 
     assert str(settings.database_url_for_sync).startswith("postgresql+psycopg://")

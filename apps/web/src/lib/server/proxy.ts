@@ -135,7 +135,10 @@ export function buildUpstreamHeaders(incoming: Headers): Headers {
 
 // Response headers we relay to the browser. `set-cookie` is handled separately (multiple
 // values). Hop-by-hop and server-only headers are intentionally dropped.
-const FORWARDED_RESPONSE_HEADERS: readonly string[] = ["content-type"];
+const FORWARDED_RESPONSE_HEADERS: readonly string[] = [
+  "content-type",
+  "location",
+];
 
 /**
  * Build the browser-facing response headers from the upstream response: the safe content
@@ -159,6 +162,16 @@ export function buildResponseHeaders(upstream: Response): Headers {
   }
   out.set("Cache-Control", "no-store");
   return out;
+}
+
+/** Rewrite only the local deterministic provider callback through the closed Web proxy. */
+export function normalizePrivilegedAuthLocation(
+  location: string | null,
+): string | null {
+  if (location === null) return null;
+  const callback = `${UPSTREAM_API_PREFIX}/auth/platform/callback`;
+  if (!location.startsWith(`${callback}?`)) return location;
+  return `${PROXY_BASE_PATH}/auth/platform/callback${location.slice(callback.length)}`;
 }
 
 /** The controlled typed error returned when the upstream cannot be reached. */
@@ -231,9 +244,16 @@ export async function forwardToUpstream(
   if (upstream.ok && isOperatorOfferPath(path) && body.length > 0) {
     body = operatorSafeOfferBody(body);
   }
+  const responseHeaders = buildResponseHeaders(upstream);
+  const normalizedLocation = normalizePrivilegedAuthLocation(
+    responseHeaders.get("location"),
+  );
+  if (normalizedLocation !== null) {
+    responseHeaders.set("location", normalizedLocation);
+  }
   return new Response(body.length > 0 ? body : null, {
     status: upstream.status,
-    headers: buildResponseHeaders(upstream),
+    headers: responseHeaders,
   });
 }
 

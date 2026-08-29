@@ -8,6 +8,7 @@ declare *what capability* they need, never a role string.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -25,8 +26,10 @@ from sky_bridge_jet.modules.iam.authz import (
 from sky_bridge_jet.modules.iam.domain import (
     AuthenticationError,
     AuthorizationError,
+    OrganizationType,
     Permission,
 )
+from sky_bridge_jet.modules.iam.repositories import AuditRepository
 from sky_bridge_jet.modules.iam.services import AuthService, load_principal
 
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -60,6 +63,8 @@ _PUBLIC_EXACT: frozenset[str] = frozenset(
         "/api/v1/auth/verification/resend",
         "/api/v1/auth/password-reset",
         "/api/v1/auth/password-reset/confirm",
+        "/api/v1/auth/platform/login",
+        "/api/v1/auth/platform/callback",
         # The Stripe webhook authenticates by signature (not a session).
         "/api/v1/webhooks/stripe",
     }
@@ -100,11 +105,34 @@ def enforce_authentication(
         if resolved is None:
             raise AuthenticationError("Authentication is required")
         user_session, user = resolved
+        principal = load_principal(session, user, user_session.id)
+        is_platform_staff = any(
+            membership.organization_type is OrganizationType.PLATFORM
+            for membership in principal.memberships
+        )
+        if request.url.path.startswith("/api/v1/platform/") and is_platform_staff:
+            from sky_bridge_jet.modules.iam.privileged_services import privileged_assurance_valid
+
+            if not privileged_assurance_valid(user_session, settings):
+                classification = (
+                    "ASSURANCE_EXPIRED"
+                    if user_session.assurance_expires_at is not None
+                    else "INSUFFICIENT_MFA"
+                )
+                AuditRepository(session).record(
+                    "privileged_access_denied",
+                    user_id=user.id,
+                    detail=classification,
+                )
+                session.commit()
+                raise AuthenticationError("Staff authentication with MFA is required")
+            user_session.last_seen_at = datetime.now(UTC)
+            session.commit()
         if request.method in _UNSAFE_METHODS:
             provided = request.headers.get(_CSRF_HEADER)
             if not provided or provided != user_session.csrf_token:
                 raise AuthorizationError("Missing or invalid CSRF token")
-        request.state.principal = load_principal(session, user, user_session.id)
+        request.state.principal = principal
     finally:
         # Release the autobegun read transaction so the endpoint's ``session.begin()``
         # starts cleanly on the shared request session.
@@ -128,11 +156,34 @@ def get_current_principal(request: Request, settings: AppSettings) -> Principal:
         if resolved is None:
             raise AuthenticationError("Authentication is required")
         user_session, user = resolved
+        principal = load_principal(auth_session, user, user_session.id)
+        is_platform_staff = any(
+            membership.organization_type is OrganizationType.PLATFORM
+            for membership in principal.memberships
+        )
+        if request.url.path.startswith("/api/v1/platform/") and is_platform_staff:
+            from sky_bridge_jet.modules.iam.privileged_services import privileged_assurance_valid
+
+            if not privileged_assurance_valid(user_session, settings):
+                classification = (
+                    "ASSURANCE_EXPIRED"
+                    if user_session.assurance_expires_at is not None
+                    else "INSUFFICIENT_MFA"
+                )
+                AuditRepository(auth_session).record(
+                    "privileged_access_denied",
+                    user_id=user.id,
+                    detail=classification,
+                )
+                auth_session.commit()
+                raise AuthenticationError("Staff authentication with MFA is required")
+            user_session.last_seen_at = datetime.now(UTC)
+            auth_session.commit()
         if request.method in _UNSAFE_METHODS:
             provided = request.headers.get(_CSRF_HEADER)
             if not provided or provided != user_session.csrf_token:
                 raise AuthorizationError("Missing or invalid CSRF token")
-        return load_principal(auth_session, user, user_session.id)
+        return principal
 
 
 CurrentPrincipal = Annotated[Principal, Depends(get_current_principal)]

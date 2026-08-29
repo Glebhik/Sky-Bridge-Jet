@@ -89,6 +89,11 @@ def test_cookie_secure_only_in_production() -> None:
         Settings(
             app_environment="production",
             database_url="postgresql+psycopg://u:p@db/x",
+            privileged_identity_provider="auth0",
+            auth0_issuer="https://example.eu.auth0.com",
+            auth0_client_id="production-client",
+            auth0_callback_url="https://app.example/auth/callback",
+            auth0_environment_id="production",
         ).cookie_secure_effective
         is True
     )
