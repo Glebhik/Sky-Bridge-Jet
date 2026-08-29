@@ -50,6 +50,7 @@ class Disposition(StrEnum):
     PHASE_9_8A_BOUND = "PHASE_9_8A_BOUND"
     # Bounded internal payment exception and reconciliation operations (Phase 9.8.B).
     PHASE_9_8B_BOUND = "PHASE_9_8B_BOUND"
+    PHASE_10B_BOUND = "PHASE_10B_BOUND"
 
 
 @dataclass(frozen=True)
@@ -75,8 +76,26 @@ _P1A = Disposition.PHASE_9_1A_BOUND
 _P96B0 = Disposition.PHASE_9_6B0_BOUND
 _P98A = Disposition.PHASE_9_8A_BOUND
 _P98B = Disposition.PHASE_9_8B_BOUND
+_P10B = Disposition.PHASE_10B_BOUND
 
 ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
+    _p("GET", "/api/v1/platform/pilot/state", _P10B, "platform (pilot.read)"),
+    _p("POST", "/api/v1/platform/pilot/state", _P10B, "platform (pilot.manage)"),
+    _p("GET", "/api/v1/platform/pilot/participants", _P10B, "platform (pilot.read)"),
+    _p("POST", "/api/v1/platform/pilot/participants", _P10B, "platform (pilot.manage)"),
+    _p(
+        "GET",
+        "/api/v1/platform/pilot/participants/{participant_id}",
+        _P10B,
+        "platform (pilot.read)",
+    ),
+    _p(
+        "POST",
+        "/api/v1/platform/pilot/participants/{participant_id}/status",
+        _P10B,
+        "platform (pilot.manage)",
+    ),
+    _p("GET", "/api/v1/platform/pilot/audits", _P10B, "platform (pilot.read)"),
     # ---- Platform / documentation / discovery (public) --------------------
     _p("GET", "/api/v1", _PUB, "anonymous", "versioned namespace root"),
     _p("GET", "/health", _PUB, "anonymous"),

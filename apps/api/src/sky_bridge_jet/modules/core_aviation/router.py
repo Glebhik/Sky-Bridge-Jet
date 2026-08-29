@@ -53,8 +53,9 @@ from sky_bridge_jet.modules.iam.dependencies import (
     CurrentPrincipal,
     require_permission,
 )
-from sky_bridge_jet.modules.iam.domain import Permission
+from sky_bridge_jet.modules.iam.domain import OrganizationType, Permission
 from sky_bridge_jet.modules.opportunities import OperatorOpportunityService
+from sky_bridge_jet.modules.pilot_governance.services import PilotAccessService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["core-aviation"])
@@ -470,6 +471,7 @@ def list_my_operator_opportunities(
     """List safe marketplace opportunities for the validated active operator."""
     operator_id = access.active_operator_id(principal, active_organization)
     access.require_operator_access(principal, Permission.OFFER_READ, operator_id)
+    PilotAccessService(session).require_operator(operator_id)
     return OperatorOpportunityService(session).list_for_operator(
         operator_id, limit=limit, offset=offset
     )
@@ -636,6 +638,7 @@ def create_trip_request(
         body_customer_id=data.customer_id,
         requested_organization_id=active_organization,
     )
+    PilotAccessService(session).require_customer(owner)
     session.rollback()
     scoped = data.model_copy(update={"customer_id": owner})
     hook = access.platform_exception_hook(
@@ -693,10 +696,19 @@ def submit_trip_request(
     command: VersionedTripCommand,
     request: Request,
     principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
     session: DatabaseSession,
 ) -> TripRequestResponse:
     owner = access.owner_of_trip(session, trip_request_id)
+    if any(
+        membership.organization_type is OrganizationType.CUSTOMER
+        for membership in principal.memberships
+    ):
+        active_customer = access.active_customer_id(principal, active_organization)
+        if owner != active_customer:
+            raise ResourceNotFoundError("Trip request was not found")
     access.require_customer_access(principal, Permission.TRIP_WRITE, owner)
+    PilotAccessService(session).require_customer(owner)
     session.rollback()
     hook = access.platform_exception_hook(
         principal,
