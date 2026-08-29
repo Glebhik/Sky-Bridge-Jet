@@ -128,6 +128,46 @@ def active_customer_id(principal: Principal, requested_organization_id: UUID | N
     raise AuthorizationError("Multiple customer organizations; specify the active organization")
 
 
+def active_platform_organization_id(
+    principal: Principal,
+    requested_organization_id: UUID | None,
+    permission: Permission,
+) -> UUID:
+    """Resolve one exact PLATFORM context and require its own permission.
+
+    Global permissions must not be borrowed from a different membership when the
+    request explicitly selected a CUSTOMER or OPERATOR organization. As with the
+    customer/operator resolvers, a sole eligible PLATFORM membership is safely
+    derived when no header is needed; multiple eligible platform memberships require
+    an explicit, already membership-validated organization header.
+    """
+    eligible = [
+        membership
+        for membership in principal.memberships
+        if membership.organization_type is OrganizationType.PLATFORM
+    ]
+    if requested_organization_id is not None:
+        match = next(
+            (
+                membership
+                for membership in eligible
+                if membership.organization_id == requested_organization_id
+            ),
+            None,
+        )
+        if match is None:
+            raise AuthorizationError("Invalid active platform organization for this action")
+    elif len(eligible) == 1:
+        match = eligible[0]
+    elif not eligible:
+        raise AuthorizationError("No platform organization context for this action")
+    else:
+        raise AuthorizationError("Multiple platform organizations; specify the active organization")
+    if permission not in match.permissions:
+        raise AuthorizationError("You are not permitted to perform this action")
+    return match.organization_id
+
+
 # --------------------------------------------------------------------------- #
 # Decision (pure) — deny-by-default, 403 vs 404
 # --------------------------------------------------------------------------- #

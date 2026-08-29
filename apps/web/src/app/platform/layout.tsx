@@ -32,7 +32,8 @@ export default async function PlatformLayout({
   );
   const canReview = session.permissions.includes("compliance.review");
   const canReadPayments = session.permissions.includes("payment.read");
-  if (!platformMember || (!canReview && !canReadPayments)) {
+  const canReadPilot = session.permissions.includes("pilot.read");
+  if (!platformMember || (!canReview && !canReadPayments && !canReadPilot)) {
     return (
       <Container>
         <Alert tone="error" title="Platform workspace access required">
@@ -47,6 +48,9 @@ export default async function PlatformLayout({
         {canReview ? <Link href="/platform/compliance">Compliance</Link> : null}
         {canReadPayments ? (
           <Link href="/platform/payments">Payments</Link>
+        ) : null}
+        {canReadPilot ? (
+          <Link href="/platform/pilot">Pilot governance</Link>
         ) : null}
       </nav>
       {children}

@@ -39,6 +39,12 @@ import type {
   PlatformPaymentException,
   PaymentOperationResult,
   PaymentOperationType,
+  PilotAudit,
+  PilotMode,
+  PilotParticipant,
+  PilotParticipantStatus,
+  PilotReason,
+  PilotState,
 } from "@/lib/api/types";
 
 /**
@@ -213,6 +219,52 @@ export const portalApi = {
   recoverCustomerAccount: (signal?: AbortSignal) =>
     apiRequest<AccountRecoveryResponse>("auth/customer-account/recover", {
       method: "POST",
+      signal,
+    }),
+  getPilotState: (signal?: AbortSignal) =>
+    apiRequest<PilotState>("platform/pilot/state", { signal }),
+  updatePilotState: (
+    body: {
+      readonly mode: PilotMode;
+      readonly payment_initiation_enabled: boolean;
+      readonly expected_version: number;
+      readonly reason: PilotReason;
+    },
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<PilotState>("platform/pilot/state", {
+      method: "POST",
+      body,
+      signal,
+    }),
+  listPilotParticipants: (offset: number, signal?: AbortSignal) =>
+    apiRequest<readonly PilotParticipant[]>("platform/pilot/participants", {
+      query: { limit: 20, offset },
+      signal,
+    }),
+  createPilotParticipant: (organizationId: string, signal?: AbortSignal) =>
+    apiRequest<PilotParticipant>("platform/pilot/participants", {
+      method: "POST",
+      body: { organization_id: organizationId, reason: "PILOT_INVITATION" },
+      signal,
+    }),
+  updatePilotParticipant: (
+    id: string,
+    body: {
+      readonly status: PilotParticipantStatus;
+      readonly expected_version: number;
+      readonly reason: PilotReason;
+    },
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<PilotParticipant>(`platform/pilot/participants/${id}/status`, {
+      method: "POST",
+      body,
+      signal,
+    }),
+  listPilotAudits: (signal?: AbortSignal) =>
+    apiRequest<readonly PilotAudit[]>("platform/pilot/audits", {
+      query: { limit: 20, offset: 0 },
       signal,
     }),
   listPlatformAdmissions: (

@@ -29,6 +29,7 @@ from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
 from sky_bridge_jet.modules.customer_views import customer_booking_view
 from sky_bridge_jet.modules.iam.dependencies import ActiveOrganization, CurrentPrincipal
 from sky_bridge_jet.modules.iam.domain import OrganizationType, Permission
+from sky_bridge_jet.modules.pilot_governance.services import PilotAccessService
 
 router = APIRouter(tags=["bookings"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -70,13 +71,24 @@ def create_booking(
     data: BookingCreate,
     request: Request,
     principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
     session: DatabaseSession,
 ) -> BookingAudienceResponse:
     # Ownership is derived from the referenced trip; owner ids are never trusted from
     # the body. The service enforces the offer→trip relationship and lifecycle. The
     # owning customer receives a customer-safe view (Phase 9.0.B); platform → full.
     owner = access.owner_of_trip(session, data.trip_request_id)
+    if any(
+        membership.organization_type is OrganizationType.CUSTOMER
+        for membership in principal.memberships
+    ):
+        active_customer = access.active_customer_id(principal, active_organization)
+        if owner != active_customer:
+            from sky_bridge_jet.modules.core_aviation.domain import ResourceNotFoundError
+
+            raise ResourceNotFoundError("Trip request was not found")
     access.require_customer_access(principal, Permission.TRIP_WRITE, owner)
+    PilotAccessService(session).require_customer(owner)
     session.rollback()
     hook = access.platform_exception_hook(
         principal,
@@ -250,7 +262,10 @@ def confirm_booking(
         assert owner_operator is not None
         acting_operator = owner_operator
     if acting_operator != owner_operator:
-        access.require_operator_access(principal, Permission.BOOKING_DECIDE, owner_operator)
+        from sky_bridge_jet.modules.core_aviation.domain import ResourceNotFoundError
+
+        raise ResourceNotFoundError("Booking was not found")
+    PilotAccessService(session).require_operator(acting_operator)
     scoped = (
         data
         if data.operator_id is not None
@@ -298,7 +313,10 @@ def reject_booking(
         assert owner_operator is not None
         acting_operator = owner_operator
     if acting_operator != owner_operator:
-        access.require_operator_access(principal, Permission.BOOKING_DECIDE, owner_operator)
+        from sky_bridge_jet.modules.core_aviation.domain import ResourceNotFoundError
+
+        raise ResourceNotFoundError("Booking was not found")
+    PilotAccessService(session).require_operator(acting_operator)
     scoped = (
         data
         if data.operator_id is not None

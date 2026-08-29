@@ -47,6 +47,7 @@ from sky_bridge_jet.modules.payments.schemas import (
     RefundResponse,
 )
 from sky_bridge_jet.modules.payments.services import PaymentService
+from sky_bridge_jet.modules.pilot_governance.services import PilotAccessService
 
 router = APIRouter(tags=["payments"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -307,6 +308,7 @@ def initiate_booking_payment(
         from sky_bridge_jet.modules.core_aviation.domain import ResourceNotFoundError
 
         raise ResourceNotFoundError("Booking was not found")
+    PilotAccessService(session).require_payment_initiation(owner)
     session.rollback()
     payment = PaymentService(session).initiate_for_customer(booking_id, data)
     # The initiation response alone may carry the transient Stripe client action.

@@ -18,7 +18,7 @@ from sky_bridge_jet.modules.audience import (
 from sky_bridge_jet.modules.core_aviation.schemas import ErrorResponse
 from sky_bridge_jet.modules.customer_views import customer_offer_view
 from sky_bridge_jet.modules.iam.dependencies import ActiveOrganization, CurrentPrincipal
-from sky_bridge_jet.modules.iam.domain import Permission
+from sky_bridge_jet.modules.iam.domain import OrganizationType, Permission
 from sky_bridge_jet.modules.offers.domain import OfferConflictError, effective_offer_status
 from sky_bridge_jet.modules.offers.models import OperatorOffer
 from sky_bridge_jet.modules.offers.schemas import (
@@ -28,6 +28,7 @@ from sky_bridge_jet.modules.offers.schemas import (
     OperatorOfferUpdate,
 )
 from sky_bridge_jet.modules.offers.services import OperatorOfferService
+from sky_bridge_jet.modules.pilot_governance.services import PilotAccessService
 
 router = APIRouter(tags=["operator-offers"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -126,6 +127,7 @@ def create_offer(
         body_operator_id=data.operator_id,
         requested_organization_id=active_organization,
     )
+    PilotAccessService(session).require_operator(owner)
     session.rollback()
     scoped = data.model_copy(update={"operator_id": owner})
     hook = _write_hook(
@@ -154,6 +156,8 @@ def create_my_operator_offer(
 ) -> OperatorOfferResponse:
     owner = access.active_operator_id(principal, active_organization)
     access.require_operator_access(principal, Permission.OFFER_MANAGE, owner)
+    PilotAccessService(session).require_operator(owner)
+    session.rollback()
     scoped = OperatorOfferCreate(operator_id=owner, **data.model_dump())
     hook = _write_hook(
         request,
@@ -206,10 +210,21 @@ def update_offer(
     data: OperatorOfferUpdate,
     request: Request,
     principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
     session: DatabaseSession,
 ) -> OperatorOfferResponse:
     owner = access.operator_of_offer(session, offer_id)
+    if any(
+        membership.organization_type is OrganizationType.OPERATOR
+        for membership in principal.memberships
+    ):
+        active_operator = access.active_operator_id(principal, active_organization)
+        if owner != active_operator:
+            from sky_bridge_jet.modules.core_aviation.domain import ResourceNotFoundError
+
+            raise ResourceNotFoundError("Offer was not found")
     access.require_operator_access(principal, Permission.OFFER_MANAGE, owner)
+    PilotAccessService(session).require_operator(owner)
     session.rollback()
     hook = _write_hook(
         request,
@@ -231,10 +246,21 @@ def submit_offer(
     offer_id: UUID,
     request: Request,
     principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
     session: DatabaseSession,
 ) -> OperatorOfferResponse:
     owner = access.operator_of_offer(session, offer_id)
+    if any(
+        membership.organization_type is OrganizationType.OPERATOR
+        for membership in principal.memberships
+    ):
+        active_operator = access.active_operator_id(principal, active_organization)
+        if owner != active_operator:
+            from sky_bridge_jet.modules.core_aviation.domain import ResourceNotFoundError
+
+            raise ResourceNotFoundError("Offer was not found")
     access.require_operator_access(principal, Permission.OFFER_MANAGE, owner)
+    PilotAccessService(session).require_operator(owner)
     session.rollback()
     hook = _write_hook(
         request,
@@ -318,10 +344,21 @@ def select_offer(
     offer_id: UUID,
     request: Request,
     principal: CurrentPrincipal,
+    active_organization: ActiveOrganization,
     session: DatabaseSession,
 ) -> OfferAudienceResponse:
     owner = access.owner_of_trip(session, trip_request_id)
+    if any(
+        membership.organization_type is OrganizationType.CUSTOMER
+        for membership in principal.memberships
+    ):
+        active_customer = access.active_customer_id(principal, active_organization)
+        if owner != active_customer:
+            from sky_bridge_jet.modules.core_aviation.domain import ResourceNotFoundError
+
+            raise ResourceNotFoundError("Trip request was not found")
     access.require_customer_access(principal, Permission.TRIP_WRITE, owner)
+    PilotAccessService(session).require_customer(owner)
     session.rollback()
     hook = access.platform_exception_hook(
         principal,

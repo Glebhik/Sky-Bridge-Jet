@@ -144,6 +144,8 @@ class Permission(StrEnum):
     ADMIN_ORGANIZATIONS_MANAGE = "admin.organizations.manage"
     # Organization self-administration (membership within one's own org)
     ORG_MEMBERSHIP_MANAGE = "org.membership.manage"
+    PILOT_READ = "pilot.read"
+    PILOT_MANAGE = "pilot.manage"
 
 
 _CUSTOMER_ASSISTANT_PERMS: Final[frozenset[Permission]] = frozenset(
@@ -198,6 +200,7 @@ ROLE_PERMISSIONS: Final[dict[OrganizationRole, frozenset[Permission]]] = {
             Permission.OPERATOR_READ,
             Permission.BOOKING_READ,
             Permission.PAYMENT_READ,
+            Permission.PILOT_READ,
         }
     ),
     OrganizationRole.PLATFORM_COMPLIANCE_REVIEWER: frozenset(
@@ -230,6 +233,8 @@ ROLE_PERMISSIONS: Final[dict[OrganizationRole, frozenset[Permission]]] = {
             Permission.FINANCE_REVIEW,
             Permission.FINANCIAL_ONBOARDING_READ,
             Permission.FINANCIAL_ONBOARDING_MANAGE,
+            Permission.PILOT_READ,
+            Permission.PILOT_MANAGE,
         }
     ),
     # PRODUCT_OWNER is the single, documented, audited high-privilege role. It is a

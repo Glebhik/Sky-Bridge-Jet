@@ -38,6 +38,54 @@ export interface MeResponse {
   readonly permissions: readonly string[];
 }
 
+export type PilotMode = "INTERNAL_ONLY" | "CONTROLLED_EXTERNAL" | "PAUSED";
+export type PilotParticipantStatus =
+  | "INVITED"
+  | "ACTIVE"
+  | "SUSPENDED"
+  | "REVOKED";
+export type PilotParticipantType = "CUSTOMER" | "OPERATOR";
+export type PilotReason =
+  | "PILOT_INVITATION"
+  | "OWNER_APPROVED"
+  | "MANUAL_REVIEW_REQUIRED"
+  | "COMPLIANCE_CONCERN"
+  | "SECURITY_OR_PRIVACY_CONCERN"
+  | "PAYMENT_AMBIGUITY"
+  | "OPERATIONAL_PAUSE"
+  | "ACCESS_NO_LONGER_REQUIRED";
+
+export interface PilotState {
+  readonly id: string;
+  readonly mode: PilotMode;
+  readonly payment_initiation_enabled: boolean;
+  readonly version: number;
+  readonly updated_at: string;
+}
+
+export interface PilotParticipant {
+  readonly id: string;
+  readonly organization_id: string;
+  readonly organization_name: string;
+  readonly participant_type: PilotParticipantType;
+  readonly status: PilotParticipantStatus;
+  readonly version: number;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+export interface PilotAudit {
+  readonly id: string;
+  readonly actor_user_id: string;
+  readonly participant_id: string | null;
+  readonly resource_type: string;
+  readonly action: string;
+  readonly previous_state: string;
+  readonly new_state: string;
+  readonly reason: PilotReason;
+  readonly created_at: string;
+}
+
 export type AdmissionStatus =
   | "DRAFT"
   | "SUBMITTED"

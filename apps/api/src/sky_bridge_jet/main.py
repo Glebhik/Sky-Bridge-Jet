@@ -22,6 +22,7 @@ from sky_bridge_jet.modules.financials.router import register_financial_exceptio
 from sky_bridge_jet.modules.iam.router import register_iam_exception_handlers
 from sky_bridge_jet.modules.offers.router import register_offer_exception_handlers
 from sky_bridge_jet.modules.payments.router import register_payment_exception_handlers
+from sky_bridge_jet.modules.pilot_governance.router import register_pilot_exception_handlers
 
 configure_logging(get_settings().log_level)
 logger = logging.getLogger(__name__)
@@ -72,6 +73,7 @@ register_payment_exception_handlers(app)
 register_compliance_exception_handlers(app)
 register_financial_exception_handlers(app)
 register_iam_exception_handlers(app)
+register_pilot_exception_handlers(app)
 app.include_router(api_v1_router)
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
