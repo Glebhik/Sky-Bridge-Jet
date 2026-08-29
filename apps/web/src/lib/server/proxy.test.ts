@@ -369,6 +369,47 @@ describe("Phase 9.7.B operator Booking reads — exact closed surface", () => {
   });
 });
 
+describe("Phase 9.8.D operator operation reads — exact closed surface", () => {
+  const OPERATION = "11111111-2222-4333-8444-555555555555";
+
+  it("allows only collection and canonical UUID detail GET", () => {
+    expect(
+      validateProxyRequest(["me", "operator-operations"], "GET"),
+    ).toMatchObject({ ok: true });
+    expect(
+      validateProxyRequest(["me", "operator-operations", OPERATION], "GET"),
+    ).toMatchObject({ ok: true });
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+      expect(
+        validateProxyRequest(["me", "operator-operations"], method),
+      ).toMatchObject({ ok: false, status: 405 });
+      expect(
+        validateProxyRequest(["me", "operator-operations", OPERATION], method),
+      ).toMatchObject({ ok: false, status: 405 });
+    }
+  });
+
+  it("rejects malformed, extended, encoded, traversal, generic and adjacent paths", () => {
+    for (const path of [
+      ["me", "operator-operations", "bad"],
+      ["me", "operator-operations", OPERATION, "status"],
+      ["me", "operator-operations", `${OPERATION}%2fextra`],
+      ["me", "operator-operations", ".."],
+      ["flight-operations"],
+      ["flight-operations", OPERATION],
+      ["bookings", OPERATION],
+      ["payments", OPERATION],
+      ["refunds", OPERATION],
+      ["admin", "operations"],
+      ["platform", "operations"],
+    ])
+      expect(validateProxyRequest(path, "GET")).toMatchObject({
+        ok: false,
+        status: 404,
+      });
+  });
+});
+
 describe("Phase 9.6.A customer Payment initiation — exact closed surface", () => {
   const BOOKING = "11111111-2222-4333-8444-555555555555";
   const exact = ["bookings", BOOKING, "payment", "initiate"];

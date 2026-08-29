@@ -334,6 +334,32 @@ export interface OperatorBookingDecisionResponse {
   readonly status: OperatorBookingStatus;
 }
 
+export type FlightOperationStatus = "HANDOFF_CREATED";
+
+export interface OperatorFlightOperationLeg {
+  readonly sequence: number;
+  readonly origin_airport_code: string;
+  readonly destination_airport_code: string;
+  readonly departure_at: string;
+  readonly passenger_count: number;
+}
+
+/** D0 operator-safe projection: no customer, passenger identity, or financial data. */
+export interface OperatorFlightOperation {
+  readonly operation_id: string;
+  readonly booking_id: string;
+  readonly booking_reference: string;
+  readonly status: FlightOperationStatus;
+  readonly booking_status: OperatorBookingStatus;
+  readonly aircraft_registration: string;
+  readonly aircraft_manufacturer: string;
+  readonly aircraft_model: string;
+  readonly aircraft_category: string;
+  readonly legs: readonly OperatorFlightOperationLeg[];
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
 export type OperatorOfferStatus =
   | "DRAFT"
   | "SUBMITTED"

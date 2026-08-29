@@ -1290,6 +1290,93 @@ a.resource-list__reference:hover {
   }
 }
 
+.operator-operations__toolbar,
+.operator-operations__pagination {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.operator-operations__note {
+  color: var(--o-text-muted);
+  max-width: 70ch;
+}
+.operator-operations__list,
+.operator-operations__card,
+.operator-operations__detail,
+.operator-operations__legs {
+  display: grid;
+  gap: 1rem;
+}
+.operator-operations__card header,
+.operator-operations__detail header {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+}
+.operator-operations__card header p,
+.operator-operations__detail header p {
+  color: var(--o-text-muted);
+  margin: 0;
+}
+.operator-operations__card h2,
+.operator-operations__detail h2 {
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+}
+.operator-operations__identity {
+  overflow-wrap: anywhere;
+}
+.operator-operations__facts {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  margin: 0;
+}
+.operator-operations__facts > div,
+.operator-operations__leg {
+  border-top: 1px solid var(--o-line-soft);
+  min-width: 0;
+  padding-top: 0.75rem;
+}
+.operator-operations__facts dt,
+.operator-operations__leg dt {
+  color: var(--o-text-muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.operator-operations__facts dd,
+.operator-operations__leg dd {
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+}
+.operator-operations__legs {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+}
+.operator-operations__leg h4 {
+  margin-top: 0;
+}
+.operator-operations__leg dl {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0;
+}
+.operator-operations__pagination {
+  justify-content: center;
+}
+
+@media (max-width: 30rem) {
+  .operator-operations__toolbar .button,
+  .operator-operations__pagination .button {
+    min-height: 2.75rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sbj-auth *,
   .sbj-auth *::before,

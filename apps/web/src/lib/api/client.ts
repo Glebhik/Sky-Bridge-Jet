@@ -28,6 +28,7 @@ import type {
   OperatorOpportunity,
   OperatorBookingReadView,
   OperatorBookingStatus,
+  OperatorFlightOperation,
   OperatorComplianceReadiness,
   PlatformAdmission,
   PlatformAuthorization,
@@ -491,6 +492,25 @@ export const portalApi = {
       organizationId,
       signal,
     }),
+  listOperatorOperations: (
+    organizationId: string,
+    query: { readonly limit: number; readonly offset: number },
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<readonly OperatorFlightOperation[]>("me/operator-operations", {
+      organizationId,
+      query,
+      signal,
+    }),
+  getOperatorOperation: (
+    operationId: string,
+    organizationId: string,
+    signal?: AbortSignal,
+  ) =>
+    apiRequest<OperatorFlightOperation>(
+      `me/operator-operations/${operationId}`,
+      { organizationId, signal },
+    ),
   confirmOperatorBooking: (
     bookingId: string,
     body: { readonly confirmation_reference?: string; readonly note?: string },
