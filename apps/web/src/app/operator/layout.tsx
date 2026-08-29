@@ -53,6 +53,7 @@ export default async function OperatorLayout({
         <Link href="/operator/opportunities">Opportunities</Link>
         <Link href="/operator/bookings">Bookings</Link>
         <Link href="/operator/bookings/history">History</Link>
+        <Link href="/operator/operations">Operations</Link>
         <Link href="/operator/aircraft">Aircraft</Link>
         <Link href="/operator/compliance">Compliance</Link>
       </nav>

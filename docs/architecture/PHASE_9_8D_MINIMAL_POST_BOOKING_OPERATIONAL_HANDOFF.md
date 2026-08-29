@@ -1,0 +1,13 @@
+# Phase 9.8.D — Minimal post-booking operational handoff
+
+Phase 9.8.D is a read-only operator Web experience built on merged D0 base `53cd943999b00060919c75980348b0eb0c89f4ea`. D0 remains the sole backend authority: one immutable `HANDOFF_CREATED` FlightOperation per confirmed Booking, exposed through bounded collection and concealed detail reads.
+
+The operator workspace adds `/operator/operations` and `/operator/operations/[operation_id]` plus one Operations navigation entry. The same-origin proxy admits only `GET me/operator-operations` and `GET me/operator-operations/:uuid`; UUID matching is canonical and closed. The typed client uses `credentials: same-origin`, `cache: no-store`, `X-Organization-Id`, and `AbortSignal`. It accepts no operator/customer ownership input.
+
+Multiple memberships require explicit organization selection. Every change aborts reads, clears prior DOM state, and advances a monotonic epoch/request generation, so A→B→A and out-of-order pagination cannot revive stale data. Collection pages use the server's deterministic `created_at DESC, id DESC` order with `limit=20`, explicit Previous/Next controls, and no exhaustive or per-card reads. Detail performs one request only after navigation. Refresh is manual; polling, SSE, WebSocket and background watchers are absent.
+
+The UI distinguishes operational status from Booking status. `HANDOFF_CREATED` means only that a confirmed Booking entered operational handoff. A later cancelled Booking remains a retained handoff record and makes no refund claim. Aircraft fields are explicitly the contractual Booking snapshot, and legs are labelled planned/scheduled facts. No readiness, dispatch, crew, airworthiness, arrival or completion claim is made; unknown future states fail closed as unavailable.
+
+The D0 projection and DOM contain no passenger identity, customer identity/contact, notes, payment/provider, fee, tax, secret, refund or payout data. Passenger count is the only passenger fact. Pending decisions remain under Bookings and commercial lifecycle history remains under History. Customer and platform operations workspaces, operation mutations, new notification events and complete flight execution are deferred.
+
+Responsive stacked facts/legs, semantic headings/articles/definition lists, native controls, textual status, loading/error states, visible links and bounded copy preserve accessibility from 320px upward. D0's fixed two-query collection/detail shape is unchanged and the Web makes one collection request per page and one detail request after navigation. There is no API production delta, migration (`20260829_0012` remains head), dependency, lockfile, `.env`, or secret change.
