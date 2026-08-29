@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
 from sky_bridge_jet.core.config import Settings, get_settings
@@ -26,11 +26,17 @@ from sky_bridge_jet.modules.notifications.delivery import (
     NotificationDeliveryError,
 )
 from sky_bridge_jet.modules.notifications.domain import (
+    PROVIDER_DELIVERY_PRECEDENCE,
+    PROVIDER_EVENT_STATES,
     MarketplaceNotificationEvent,
     NotificationFailureCode,
     RecipientFanoutError,
+    provider_delivery_should_advance,
 )
-from sky_bridge_jet.modules.notifications.models import NotificationOutbox
+from sky_bridge_jet.modules.notifications.models import (
+    NotificationOutbox,
+    NotificationProviderEvent,
+)
 from sky_bridge_jet.modules.notifications.repositories import NotificationOutboxRepository
 from sky_bridge_jet.modules.notifications.services import NotificationOutboxService
 from sky_bridge_jet.modules.offers.domain import EffectiveOfferStatus, effective_offer_status
@@ -225,6 +231,7 @@ class MarketplaceNotificationDispatcher:
             applicable_ids = self._applicable_notification_ids(claimed, now=now)
 
         delivered = retryable_failed = permanent_failed = stale_results = 0
+        systemic_failure: NotificationFailureCode | None = None
         for notification in claimed:
             if notification.event is None:
                 if self._mark_failed(
@@ -260,10 +267,36 @@ class MarketplaceNotificationDispatcher:
                 else:
                     stale_results += 1
                 continue
+            if systemic_failure is not None:
+                if self._mark_failed(notification, now=now, retryable=True, code=systemic_failure):
+                    retryable_failed += 1
+                else:
+                    stale_results += 1
+                continue
+            if (
+                self.settings.app_environment == "staging"
+                and recipient.email.lower() not in self.settings.marketplace_staging_recipients
+            ):
+                if self._mark_failed(
+                    notification,
+                    now=now,
+                    retryable=False,
+                    code=NotificationFailureCode.RECIPIENT_INELIGIBLE,
+                ):
+                    permanent_failed += 1
+                else:
+                    stale_results += 1
+                continue
             try:
-                self.sender.send(self._render(notification.event, recipient.email))
+                acceptance = self.sender.send(
+                    self._render(notification, notification.event, recipient.email)
+                )
             except NotificationDeliveryError as error:
-                retryable = error.retryable and notification.attempt_count < MAX_DELIVERY_ATTEMPTS
+                # Provider-wide incidents must not burn each queue entry merely
+                # because the worker observed the same outage.
+                retryable = error.retryable and (
+                    error.systemic or notification.attempt_count < MAX_DELIVERY_ATTEMPTS
+                )
                 if self._mark_failed(notification, now=now, retryable=retryable, code=error.code):
                     if retryable:
                         retryable_failed += 1
@@ -271,8 +304,10 @@ class MarketplaceNotificationDispatcher:
                         permanent_failed += 1
                 else:
                     stale_results += 1
+                if error.systemic:
+                    systemic_failure = error.code
                 continue
-            if self._mark_delivered(notification, now):
+            if self._mark_delivered(notification, now, acceptance.provider_message_id):
                 delivered += 1
             else:
                 stale_results += 1
@@ -489,7 +524,12 @@ class MarketplaceNotificationDispatcher:
             .all()
         )
 
-    def _render(self, event: MarketplaceNotificationEvent, recipient: str) -> MarketplaceEmail:
+    def _render(
+        self,
+        notification: ClaimedNotification,
+        event: MarketplaceNotificationEvent,
+        recipient: str,
+    ) -> MarketplaceEmail:
         templates = {
             MarketplaceNotificationEvent.OFFER_AVAILABLE: (
                 "A new Sky Bridge Jet offer is available",
@@ -514,20 +554,69 @@ class MarketplaceNotificationDispatcher:
             ),
         }
         subject, body, route = templates[event]
+        if self.settings.app_environment == "staging":
+            subject = f"[STAGING] {subject}"
         return MarketplaceEmail(
             recipient=recipient,
             subject=subject,
             text_body=f"{body}\n\n{self.settings.web_public_origin}{route}",
+            idempotency_key=str(notification.id),
         )
 
-    def _mark_delivered(self, notification: ClaimedNotification, now: datetime) -> bool:
+    def _mark_delivered(
+        self,
+        notification: ClaimedNotification,
+        now: datetime,
+        provider_message_id: str = "internal-acceptance",
+    ) -> bool:
         from sky_bridge_jet.modules.notifications.domain import NotificationClaimConflictError
 
         try:
             with self.session.begin():
                 NotificationOutboxService(self.session).mark_delivered(
-                    notification.id, notification.claim_token, now=now
+                    notification.id,
+                    notification.claim_token,
+                    now=now,
+                    provider_message_id=provider_message_id,
                 )
+                # A verified webhook may beat acceptance finalization. Its minimal
+                # ledger row is authoritative and is reconciled while this outbox
+                # row remains locked by the claim-token transition.
+                event_precedence = case(
+                    {
+                        event_type: PROVIDER_DELIVERY_PRECEDENCE[state]
+                        for event_type, state in PROVIDER_EVENT_STATES.items()
+                    },
+                    value=NotificationProviderEvent.event_type,
+                    else_=0,
+                )
+                strongest = self.session.execute(
+                    select(
+                        NotificationProviderEvent.event_type,
+                        NotificationProviderEvent.occurred_at,
+                    )
+                    .where(
+                        NotificationProviderEvent.provider_message_id == provider_message_id,
+                        NotificationProviderEvent.event_type.in_(PROVIDER_EVENT_STATES),
+                    )
+                    .order_by(
+                        NotificationProviderEvent.occurred_at.desc(),
+                        event_precedence.desc(),
+                        NotificationProviderEvent.provider_event_id.desc(),
+                    )
+                    .limit(1)
+                ).one_or_none()
+                if strongest is not None:
+                    row = self.session.get_one(NotificationOutbox, notification.id)
+                    state = PROVIDER_EVENT_STATES[strongest.event_type]
+                    if provider_delivery_should_advance(
+                        current_state=row.provider_delivery_state,
+                        current_occurred_at=row.provider_event_at,
+                        candidate_state=state,
+                        candidate_occurred_at=strongest.occurred_at,
+                    ):
+                        row.provider_delivery_state = state.value
+                        row.provider_event_at = strongest.occurred_at
         except NotificationClaimConflictError:
             return False
         return True
@@ -544,7 +633,10 @@ class MarketplaceNotificationDispatcher:
 
         next_attempt_at = None
         if retryable:
-            next_attempt_at = now + RETRY_DELAYS[notification.attempt_count - 1]
+            next_attempt_at = (
+                now
+                + RETRY_DELAYS[min(max(notification.attempt_count - 1, 0), len(RETRY_DELAYS) - 1)]
+            )
         try:
             with self.session.begin():
                 NotificationOutboxService(self.session).mark_delivery_failed(

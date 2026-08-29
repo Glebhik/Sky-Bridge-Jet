@@ -14,7 +14,7 @@ class AvailableSession:
         return None
 
     def scalar(self, _statement: object) -> str:
-        return "20260831_0014"
+        return "20260901_0015"
 
 
 class UnavailableSession:

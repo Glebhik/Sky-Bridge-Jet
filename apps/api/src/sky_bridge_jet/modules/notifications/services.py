@@ -48,7 +48,12 @@ class NotificationOutboxService:
         return notification
 
     def mark_delivered(
-        self, notification_id: UUID, claim_token: UUID, *, now: datetime
+        self,
+        notification_id: UUID,
+        claim_token: UUID,
+        *,
+        now: datetime,
+        provider_message_id: str | None = None,
     ) -> NotificationOutbox:
         return self._transition(
             notification_id,
@@ -57,6 +62,8 @@ class NotificationOutboxService:
             now=now,
             next_attempt_at=None,
             failure_code=None,
+            provider_message_id=provider_message_id,
+            provider_delivery_state="ACCEPTED",
         )
 
     def mark_delivery_failed(
@@ -93,6 +100,8 @@ class NotificationOutboxService:
         now: datetime,
         next_attempt_at: datetime | None,
         failure_code: str | None,
+        provider_message_id: str | None = None,
+        provider_delivery_state: str | None = None,
     ) -> NotificationOutbox:
         notification = self.repository.transition_claim(
             notification_id,
@@ -101,6 +110,8 @@ class NotificationOutboxService:
             now=now,
             next_attempt_at=next_attempt_at,
             failure_code=failure_code,
+            provider_message_id=provider_message_id,
+            provider_delivery_state=provider_delivery_state,
         )
         if notification is None:
             raise NotificationClaimConflictError("Notification claim is no longer authoritative")

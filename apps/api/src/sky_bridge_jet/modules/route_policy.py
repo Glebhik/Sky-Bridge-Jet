@@ -52,6 +52,7 @@ class Disposition(StrEnum):
     PHASE_9_8B_BOUND = "PHASE_9_8B_BOUND"
     PHASE_10B_BOUND = "PHASE_10B_BOUND"
     PHASE_10C_BOUND = "PHASE_10C_BOUND"
+    PHASE_10D_BOUND = "PHASE_10D_BOUND"
 
 
 @dataclass(frozen=True)
@@ -79,8 +80,10 @@ _P98A = Disposition.PHASE_9_8A_BOUND
 _P98B = Disposition.PHASE_9_8B_BOUND
 _P10B = Disposition.PHASE_10B_BOUND
 _P10C = Disposition.PHASE_10C_BOUND
+_P10D = Disposition.PHASE_10D_BOUND
 
 ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
+    _p("POST", "/api/v1/webhooks/resend", _PUB, "provider", "verified Resend webhook"),
     _p(
         "GET",
         "/api/v1/platform/operations/diagnostics",

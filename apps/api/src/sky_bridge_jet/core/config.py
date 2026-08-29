@@ -85,6 +85,15 @@ class Settings(BaseSettings):
     auth_email_enabled: bool = False
     resend_api_key: str | None = None
     auth_email_from: str = "Sky Bridge Jet <no-reply@skybridgejet.disgroup.ie>"
+    marketplace_email_enabled: bool = False
+    marketplace_email_provider: Literal["fake", "resend"] = "fake"
+    marketplace_email_from: str = "Sky Bridge Jet <no-reply@skybridgejet.disgroup.ie>"
+    marketplace_email_reply_to: str | None = None
+    marketplace_email_timeout_seconds: float = 10.0
+    marketplace_dispatch_batch_size: int = 20
+    marketplace_dispatch_poll_seconds: float = 30.0
+    marketplace_staging_recipient_allowlist: str = ""
+    resend_webhook_secret: str | None = None
     web_public_origin: str = "http://localhost:3000"
     privileged_identity_provider: Literal["disabled", "fake", "auth0"] = "disabled"
     auth0_issuer: str | None = None
@@ -226,6 +235,36 @@ class Settings(BaseSettings):
                 "WEB_PUBLIC_ORIGIN must use https in production when AUTH_EMAIL_ENABLED is set"
             )
         return self
+
+    @model_validator(mode="after")
+    def validate_marketplace_email(self) -> "Settings":
+        if not 1 <= self.marketplace_dispatch_batch_size <= 100:
+            raise ValueError("MARKETPLACE_DISPATCH_BATCH_SIZE must be between 1 and 100")
+        if not 1 <= self.marketplace_dispatch_poll_seconds <= 3600:
+            raise ValueError("MARKETPLACE_DISPATCH_POLL_SECONDS must be between 1 and 3600")
+        if not 0.5 <= self.marketplace_email_timeout_seconds <= 30:
+            raise ValueError("MARKETPLACE_EMAIL_TIMEOUT_SECONDS must be between 0.5 and 30")
+        if not self.marketplace_email_enabled:
+            return self
+        if self.marketplace_email_provider != "resend":
+            if self.app_environment in {"staging", "production"}:
+                raise ValueError("Resend marketplace email is required outside development/test")
+            return self
+        if not self.resend_api_key:
+            raise ValueError("RESEND_API_KEY is required when marketplace email is enabled")
+        if self.app_environment == "staging" and not self.marketplace_staging_recipients:
+            raise ValueError("Staging marketplace email requires an approved recipient allowlist")
+        if self.app_environment in {"staging", "production"} and not self.resend_webhook_secret:
+            raise ValueError("RESEND_WEBHOOK_SECRET is required for marketplace email")
+        return self
+
+    @property
+    def marketplace_staging_recipients(self) -> frozenset[str]:
+        return frozenset(
+            value.strip().lower()
+            for value in self.marketplace_staging_recipient_allowlist.split(",")
+            if value.strip()
+        )
 
     @property
     def stripe_live_key_detected(self) -> bool:
