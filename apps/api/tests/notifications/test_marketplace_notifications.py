@@ -5,7 +5,7 @@ import threading
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, NoReturn
 from uuid import UUID, uuid4
 
 import iam_support
@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from payments._support import make_operator_eligible
 from sqlalchemy import delete, event, func, select
 
-from sky_bridge_jet.core.config import Settings
+from sky_bridge_jet.core.config import Settings, get_settings
 from sky_bridge_jet.db.session import SessionLocal
 from sky_bridge_jet.modules.bookings.domain import BookingStatus
 from sky_bridge_jet.modules.bookings.models import Booking
@@ -29,10 +29,13 @@ from sky_bridge_jet.modules.iam.models import Organization, OrganizationMembersh
 from sky_bridge_jet.modules.notifications.delivery import (
     FakeDeliveryMode,
     FakeMarketplaceNotificationSender,
+    MarketplaceEmail,
+    NotificationDeliveryError,
 )
 from sky_bridge_jet.modules.notifications.domain import (
     MarketplaceNotificationEvent,
     NotificationDeliveryState,
+    NotificationFailureCode,
     RecipientFanoutError,
 )
 from sky_bridge_jet.modules.notifications.marketplace import (
@@ -45,6 +48,7 @@ from sky_bridge_jet.modules.notifications.marketplace import (
 from sky_bridge_jet.modules.notifications.models import NotificationOutbox
 from sky_bridge_jet.modules.notifications.repositories import NotificationOutboxRepository
 from sky_bridge_jet.modules.notifications.services import NotificationOutboxService
+from sky_bridge_jet.modules.notifications.worker import dispatch_once
 from sky_bridge_jet.modules.offers.domain import OfferStatus
 from sky_bridge_jet.modules.offers.models import OperatorOffer
 from sky_bridge_jet.modules.offers.services import OperatorOfferService
@@ -462,6 +466,123 @@ def test_retry_backoff_limit_restart_and_email_change(
         assert final.delivery_state is NotificationDeliveryState.FAILED_PERMANENT
         assert final.id == row.id
         assert final.attempt_count == 3
+
+
+def test_disabled_worker_preserves_durable_notification(
+    client: TestClient, airports: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = _draft_scenario(client, airports)
+    _, customer_org, _ = _member(
+        role=OrganizationRole.CUSTOMER_OWNER,
+        customer_id=UUID(scenario["customer"]["id"]),
+    )
+    _members_bulk(organization_id=customer_org, count=2)
+    offer_id = UUID(scenario["offer"]["id"])
+    assert client.post(f"/api/v1/offers/{offer_id}/submit").status_code == 200
+    rows = _events_for({offer_id})
+    assert len(rows) == 3
+    with SessionLocal.begin() as session:
+        retryable = session.get_one(NotificationOutbox, rows[1].id)
+        retryable.delivery_state = NotificationDeliveryState.FAILED_RETRYABLE
+        retryable.attempt_count = 1
+        retryable.next_attempt_at = NOW - timedelta(minutes=1)
+        expired = session.get_one(NotificationOutbox, rows[2].id)
+        expired.delivery_state = NotificationDeliveryState.CLAIMED
+        expired.attempt_count = 1
+        expired.claim_token = uuid4()
+        expired.claimed_at = NOW - CLAIM_LEASE - timedelta(seconds=1)
+    with SessionLocal() as session:
+        before = {
+            row.id: (
+                session.get_one(NotificationOutbox, row.id).delivery_state,
+                session.get_one(NotificationOutbox, row.id).attempt_count,
+                session.get_one(NotificationOutbox, row.id).claim_token,
+                session.get_one(NotificationOutbox, row.id).claimed_at,
+            )
+            for row in rows
+        }
+    monkeypatch.setenv("MARKETPLACE_EMAIL_ENABLED", "false")
+    get_settings.cache_clear()
+    try:
+        assert dispatch_once() == 0
+    finally:
+        get_settings.cache_clear()
+    with SessionLocal() as session:
+        after_disabled = {
+            row.id: (
+                session.get_one(NotificationOutbox, row.id).delivery_state,
+                session.get_one(NotificationOutbox, row.id).attempt_count,
+                session.get_one(NotificationOutbox, row.id).claim_token,
+                session.get_one(NotificationOutbox, row.id).claimed_at,
+            )
+            for row in rows
+        }
+        assert after_disabled == before
+        assert all(
+            session.get_one(NotificationOutbox, row.id).provider_message_id is None for row in rows
+        )
+    monkeypatch.setenv("MARKETPLACE_EMAIL_ENABLED", "true")
+    monkeypatch.setenv("MARKETPLACE_EMAIL_PROVIDER", "fake")
+    get_settings.cache_clear()
+    try:
+        assert dispatch_once() == 3
+    finally:
+        get_settings.cache_clear()
+    with SessionLocal() as session:
+        assert {session.get_one(NotificationOutbox, row.id).delivery_state for row in rows} == {
+            NotificationDeliveryState.DELIVERED
+        }
+
+
+def test_systemic_provider_failure_stops_batch_without_burning_rows(
+    client: TestClient, airports: list[dict[str, Any]]
+) -> None:
+    scenario = _draft_scenario(client, airports)
+    _, customer_org, _ = _member(
+        role=OrganizationRole.CUSTOMER_OWNER,
+        customer_id=UUID(scenario["customer"]["id"]),
+    )
+    _members_bulk(organization_id=customer_org, count=2)
+    offer_id = UUID(scenario["offer"]["id"])
+    assert client.post(f"/api/v1/offers/{offer_id}/submit").status_code == 200
+    rows = _events_for({offer_id})
+    assert len(rows) == 3
+    with SessionLocal.begin() as session:
+        for row in rows:
+            session.get_one(NotificationOutbox, row.id).attempt_count = 2
+
+    class SystemicSender:
+        attempts = 0
+
+        def send(self, _message: MarketplaceEmail) -> NoReturn:
+            self.attempts += 1
+            raise NotificationDeliveryError(
+                NotificationFailureCode.PROVIDER_SYSTEMIC_AUTH,
+                retryable=True,
+                systemic=True,
+            )
+
+    sender = SystemicSender()
+    with SessionLocal() as session:
+        result = MarketplaceNotificationDispatcher(session, sender).dispatch_batch(now=NOW, limit=3)
+    assert result == DispatchResult(
+        claimed=3,
+        delivered=0,
+        retryable_failed=3,
+        permanent_failed=0,
+        stale_results=0,
+    )
+    assert sender.attempts == 1
+    with SessionLocal() as session:
+        persisted = list(
+            session.scalars(
+                select(NotificationOutbox).where(NotificationOutbox.id.in_([r.id for r in rows]))
+            )
+        )
+        assert {row.delivery_state for row in persisted} == {
+            NotificationDeliveryState.FAILED_RETRYABLE
+        }
+        assert {row.failure_code for row in persisted} == {"PROVIDER_SYSTEMIC_AUTH"}
 
 
 def test_revoked_operator_membership_fails_permanently_before_send(

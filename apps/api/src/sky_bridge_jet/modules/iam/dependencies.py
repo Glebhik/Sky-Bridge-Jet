@@ -67,6 +67,7 @@ _PUBLIC_EXACT: frozenset[str] = frozenset(
         "/api/v1/auth/platform/callback",
         # The Stripe webhook authenticates by signature (not a session).
         "/api/v1/webhooks/stripe",
+        "/api/v1/webhooks/resend",
     }
 )
 # Public read-only discovery (product policy): the airport catalog.

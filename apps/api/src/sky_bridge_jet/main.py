@@ -26,7 +26,7 @@ from sky_bridge_jet.modules.pilot_governance.router import register_pilot_except
 
 configure_logging(get_settings().log_level)
 logger = logging.getLogger(__name__)
-EXPECTED_ALEMBIC_REVISION = "20260831_0014"
+EXPECTED_ALEMBIC_REVISION = "20260901_0015"
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):

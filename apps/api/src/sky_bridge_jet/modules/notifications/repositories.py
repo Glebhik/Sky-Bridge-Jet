@@ -193,6 +193,8 @@ class NotificationOutboxRepository:
         now: datetime,
         next_attempt_at: datetime | None,
         failure_code: str | None,
+        provider_message_id: str | None = None,
+        provider_delivery_state: str | None = None,
     ) -> NotificationOutbox | None:
         statement = (
             update(NotificationOutbox)
@@ -208,6 +210,11 @@ class NotificationOutboxRepository:
                 next_attempt_at=next_attempt_at,
                 delivered_at=now if state is NotificationDeliveryState.DELIVERED else None,
                 failure_code=failure_code,
+                provider_message_id=provider_message_id,
+                provider_delivery_state=provider_delivery_state,
+                # Provider acceptance is a local dispatch fact. Only a verified
+                # webhook supplies provider_event_at.
+                provider_event_at=None,
                 updated_at=now,
             )
             .returning(NotificationOutbox)

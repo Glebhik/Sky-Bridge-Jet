@@ -42,6 +42,11 @@ def diagnostics(
                 WHERE delivery_state IN ('PENDING','FAILED_RETRYABLE')) AS outbox_oldest_due_seconds,
               (SELECT count(*) FROM notification_outbox WHERE delivery_state = 'FAILED_RETRYABLE') AS outbox_retryable,
               (SELECT count(*) FROM notification_outbox WHERE delivery_state = 'FAILED_PERMANENT') AS outbox_permanent,
+              (SELECT count(*) FROM notification_outbox WHERE provider_delivery_state = 'BOUNCED') AS outbox_bounced,
+              (SELECT count(*) FROM notification_outbox WHERE provider_delivery_state = 'COMPLAINED') AS outbox_complained,
+              (SELECT count(*) FROM notification_outbox WHERE provider_delivery_state = 'SUPPRESSED') AS outbox_suppressed,
+              (SELECT count(*) FROM notification_outbox
+                 WHERE failure_code IN ('PROVIDER_SYSTEMIC_AUTH','PROVIDER_SYSTEMIC_POLICY')) AS outbox_systemic_provider_failures,
               (SELECT count(*) FROM notification_outbox
                  WHERE delivery_state = 'CLAIMED' AND claimed_at < now() - interval '10 minutes') AS outbox_expired_claims,
               (SELECT count(*) FROM operator_admissions WHERE status IN ('SUBMITTED','UNDER_REVIEW')) AS admissions_pending,
